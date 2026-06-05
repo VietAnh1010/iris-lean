@@ -120,10 +120,24 @@ def imp (P Q : MonPred I PROP) : MonPred I PROP :=
   MonPred.upclosed fun i => iprop(P i → Q i)
 
 def sForall (Ψ : MonPred I PROP -> Prop) : MonPred I PROP where
+  holds i := BI.sForall fun p => ∃ P, Ψ P ∧ P i = p
+  mono h_rel := by
+    refine sForall_intro ?_
+    rintro _ ⟨Q, hQ, rfl⟩
+    exact (sForall_elim ⟨Q, hQ, rfl⟩).trans (Q.mono h_rel)
+
+def sExists (Ψ : MonPred I PROP -> Prop) : MonPred I PROP where
+  holds i := BI.sExists fun p => ∃ P, Ψ P ∧ P i = p
+  mono h_rel := by
+    refine sExists_elim ?_
+    rintro _ ⟨Q, hQ, rfl⟩
+    exact (Q.mono h_rel).trans (sExists_intro ⟨Q, hQ, rfl⟩)
+
+def sForall' (Ψ : MonPred I PROP -> Prop) : MonPred I PROP where
   holds i := iprop(∀ P, ⌜Ψ P⌝ → P i)
   mono h_rel := forall_mono fun P => imp_mono_r (P.mono h_rel)
 
-def sExists (Ψ : MonPred I PROP -> Prop) : MonPred I PROP where
+def sExists' (Ψ : MonPred I PROP -> Prop) : MonPred I PROP where
   holds i := iprop(∃ P, ⌜Ψ P⌝ ∧ P i)
   mono h_rel := exists_mono fun P => and_mono_r (P.mono h_rel)
 
@@ -162,6 +176,8 @@ def siPure [Sbi PROP] (Pi : SiProp) : MonPred I PROP where
 def siEmpValid [Sbi PROP] (P : MonPred I PROP) : SiProp :=
   iprop(<si_emp_valid> ∀ i, P i)
 
+end bidefs
+
 instance [BIUpdate PROP] : BUpd (MonPred I PROP) := ⟨MonPred.bupd⟩
 
 instance [BIFUpdate PROP] : FUpd (MonPred I PROP) := ⟨MonPred.fupd⟩
@@ -177,28 +193,32 @@ instance [BIFUpdate PROP] {E1 E2 : CoPset} :
     NonExpansive (FUpd.fupd E1 E2 (PROP := MonPred I PROP)) :=
   ⟨fun {_ _ _} h i => BIFUpdate.ne.ne (h i)⟩
 
+-- With the value-indexed definition of `sForall`/`sExists`, projecting at an index `i` is now
+-- *definitionally* the corresponding PROP-level quantifier, so these bridge lemmas are `.rfl`. They
+-- are kept as named lemmas so the call sites below (and the BI instance) keep reading clearly.
 theorem sForall_at (Ψ : MonPred I PROP → Prop) i :
-    sForall Ψ i ⊣⊢ BI.sForall fun p => ∃ P, Ψ P ∧ P i = p := by
-  constructor
-  · refine sForall_intro ?_
-    rintro _ ⟨P, hP, rfl⟩
-    refine (forall_elim P).trans ?_
-    exact pure_imp_elim hP
-  · refine forall_intro fun P => ?_
-    refine imp_intro ?_
-    refine pure_elim_r fun hP => ?_
-    exact sForall_elim ⟨P, hP, rfl⟩
+    sForall Ψ i ⊣⊢ BI.sForall fun p => ∃ P, Ψ P ∧ P i = p := .rfl
 
 theorem sExists_at (Ψ : MonPred I PROP → Prop) i :
-    sExists Ψ i ⊣⊢ BI.sExists fun p => ∃ P, Ψ P ∧ P i = p := by
+    sExists Ψ i ⊣⊢ BI.sExists fun p => ∃ P, Ψ P ∧ P i = p := .rfl
+
+-- Bridges from the value-indexed `holds i` to the natural pointwise form. These are PROP-level (they
+-- do not use the `MonPred` BI instance) and are used to reprove the BI quantifier laws below.
+theorem sForall_holds (Ψ : MonPred I PROP → Prop) i :
+    (sForall Ψ).holds i ⊣⊢ ∀ P, ⌜Ψ P⌝ → P i := by
   constructor
-  · refine exists_elim fun P => ?_
-    refine pure_elim_l fun hP => ?_
-    exact sExists_intro ⟨P, hP, rfl⟩
+  · exact forall_intro fun P => imp_intro <| pure_elim_r fun hP => sForall_elim ⟨P, hP, rfl⟩
+  · refine sForall_intro ?_
+    rintro _ ⟨P, hP, rfl⟩
+    exact (forall_elim P).trans (pure_imp_elim hP)
+
+theorem sExists_holds (Ψ : MonPred I PROP → Prop) i :
+    (sExists Ψ).holds i ⊣⊢ ∃ P, ⌜Ψ P⌝ ∧ P i := by
+  constructor
   · refine sExists_elim ?_
     rintro _ ⟨P, hP, rfl⟩
-    refine exists_intro' P ?_
-    exact and_intro (pure_intro hP) .rfl
+    exact exists_intro' P (and_intro (pure_intro hP) .rfl)
+  · exact exists_elim fun P => pure_elim_l fun hP => sExists_intro ⟨P, hP, rfl⟩
 
 instance : BIBase (MonPred I PROP) where
   Entails := MonPred.Entails
@@ -213,6 +233,25 @@ instance : BIBase (MonPred I PROP) where
   wand := MonPred.wand
   persistently := MonPred.persistently
   later := MonPred.later
+
+-- Pointwise projection of the `∀`/`∃` binders (Rocq's `monPred_at_forall`/`monPred_at_exist`).
+theorem forall_at {α : Sort _} (Φ : α → MonPred I PROP) i :
+    iprop(∀ x, Φ x).holds i ⊣⊢ ∀ x, (Φ x).holds i := by
+  refine (sForall_holds _ i).trans ⟨?_, ?_⟩
+  · refine forall_intro fun x => ?_
+    exact (forall_elim (Φ x)).trans (pure_imp_elim ⟨x, rfl⟩)
+  · refine forall_intro fun _ => imp_intro <| pure_elim_r ?_
+    rintro ⟨x, rfl⟩
+    exact forall_elim x
+
+theorem exists_at {α : Sort _} (Φ : α → MonPred I PROP) i :
+    iprop(∃ x, Φ x).holds i ⊣⊢ ∃ x, (Φ x).holds i := by
+  refine (sExists_holds _ i).trans ⟨?_, ?_⟩
+  · refine exists_elim fun _ => pure_elim_l ?_
+    rintro ⟨x, rfl⟩
+    exact exists_intro' x .rfl
+  · refine exists_elim fun x => ?_
+    exact exists_intro' (Φ x) (and_intro (pure_intro ⟨x, rfl⟩) .rfl)
 
 instance : Preorder BIBase.Entails (α := MonPred I PROP) where
   refl _ := .rfl
@@ -233,8 +272,6 @@ instance : BI (MonPred I PROP) where
     exact imp_ne.ne (h₁ j) (h₂ j)
   sForall_ne {n Ψ₁ Ψ₂} h i := by
     obtain ⟨h₁, h₂⟩ := h
-    refine (equiv_iff.mpr (sForall_at Ψ₁ i)).dist.trans ?_
-    refine .trans ?_ (equiv_iff.mpr (sForall_at Ψ₂ i)).symm.dist
     refine sForall_ne ⟨?_, ?_⟩
     · rintro _ ⟨P, hP, rfl⟩
       obtain ⟨Q, hQ, hPQ⟩ := h₁ P hP
@@ -244,8 +281,6 @@ instance : BI (MonPred I PROP) where
       exact ⟨P i, ⟨P, hP, rfl⟩, hPQ i⟩
   sExists_ne {n Ψ₁ Ψ₂} h i := by
     obtain ⟨h₁, h₂⟩ := h
-    refine (equiv_iff.mpr (sExists_at Ψ₁ i)).dist.trans ?_
-    refine .trans ?_ (equiv_iff.mpr (sExists_at Ψ₂ i)).symm.dist
     refine sExists_ne ⟨?_, ?_⟩
     · rintro _ ⟨P, hP, rfl⟩
       obtain ⟨Q, hQ, hPQ⟩ := h₁ P hP
@@ -280,10 +315,16 @@ instance : BI (MonPred I PROP) where
     refine (h i).trans ?_
     refine (forall_elim i).trans ?_
     exact pure_imp_elim refl
-  sForall_intro h i := forall_intro fun P => imp_intro <| pure_elim_r fun hP => h P hP i
-  sForall_elim {Ψ P} h i := (forall_elim P).trans (pure_imp_elim h)
-  sExists_intro {Ψ P} h i := exists_intro' P <| and_intro (pure_intro h) .rfl
-  sExists_elim h i := exists_elim fun Q => pure_elim_l fun hQ => h Q hQ i
+  sForall_intro {P Ψ} h i := by
+    refine sForall_intro ?_
+    rintro _ ⟨Q, hQ, rfl⟩
+    exact h Q hQ i
+  sForall_elim {Ψ P} h i := sForall_elim ⟨P, h, rfl⟩
+  sExists_intro {Ψ P} h i := sExists_intro ⟨P, h, rfl⟩
+  sExists_elim h i := by
+    refine sExists_elim ?_
+    rintro _ ⟨Q, hQ, rfl⟩
+    exact h Q hQ i
   sep_mono h₁ h₂ i := sep_mono (h₁ i) (h₂ i)
   emp_sep := ⟨fun i => emp_sep.mp, fun i => emp_sep.mpr⟩
   sep_symm i := sep_symm
@@ -304,40 +345,36 @@ instance : BI (MonPred I PROP) where
   persistently_emp_2 i := persistently_emp_2
   persistently_and_2 i := persistently_and_2
   persistently_sExists_1 {Ψ} i := by
-    refine persistently_exists.mp.trans ?_
-    refine exists_elim fun P => ?_
-    refine persistently_and.mp.trans ?_
-    refine exists_intro' iprop(⌜Ψ P⌝ ∧ <pers> P) ?_
-    refine and_intro (pure_intro ⟨_, rfl⟩) ?_
-    exact and_intro (and_elim_l.trans persistently_pure.mp) and_elim_r
+    refine persistently_sExists_1.trans ?_
+    refine exists_elim fun p => ?_
+    refine pure_elim_l ?_
+    rintro ⟨P, hP, rfl⟩
+    refine (and_intro (pure_intro hP) .rfl).trans ?_
+    refine sExists_intro ?_; dsimp
+    exact ⟨iprop(⌜Ψ P⌝ ∧ <pers> P), ⟨P, rfl⟩, rfl⟩
   persistently_absorb_l i := persistently_absorb_l
   persistently_and_l i := persistently_and_l
   later_mono h i := later_mono (h i)
   later_intro i := later_intro
   later_sForall_2 {Ψ} i := by
-    refine .trans ?_ later_forall.mpr
-    refine forall_intro fun P => ?_
-    refine (forall_elim iprop(⌜Ψ P⌝ → ▷ P)).trans ?_; dsimp
-    refine (pure_imp_elim ⟨P, rfl⟩).trans ?_
-    refine (forall_elim i).trans ?_; dsimp
-    refine (pure_imp_elim refl).trans ?_; dsimp
-    -- Key step: `(⌜Ψ P⌝ → ▷ P i) ⊢ ▷ (⌜Ψ P⌝ → P i)`. A pure implication `⌜φ⌝ → R`
-    -- is equivalent to the BI-forall `∀ _ : φ, R` indexed by proofs of `φ`.
-    refine .trans (forall_intro pure_imp_elim) ?_
-    refine later_forall_2.trans ?_
-    refine later_mono ?_
+    refine .trans ?_ later_sForall_2
+    refine forall_intro fun p => ?_
     refine imp_intro ?_
-    exact pure_elim_r forall_elim
+    refine pure_elim_r ?_
+    rintro ⟨P, hP, rfl⟩
+    refine (sForall_elim ⟨iprop(⌜Ψ P⌝ → ▷ P), ⟨P, rfl⟩, rfl⟩).trans ?_
+    refine (forall_elim i).trans ?_; dsimp
+    refine (pure_imp_elim refl).trans ?_
+    exact pure_imp_elim hP
   later_sExists_false {Ψ} i := by
-    refine (later_mono (sExists_at Ψ i).mp).trans ?_
     refine later_sExists_false.trans ?_
     refine or_mono .rfl ?_
     refine exists_elim fun p => ?_
     refine pure_elim_l ?_
     rintro ⟨P, hP, rfl⟩
-    refine exists_intro' iprop(⌜Ψ P⌝ ∧ ▷ P) ?_; dsimp
-    refine and_intro (pure_intro ⟨P, rfl⟩) ?_
-    exact and_intro (pure_intro hP) .rfl
+    refine (and_intro (pure_intro hP) .rfl).trans ?_
+    refine sExists_intro ?_; dsimp
+    exact ⟨iprop(⌜Ψ P⌝ ∧ ▷ P), ⟨P, rfl⟩, rfl⟩
   later_sep := ⟨fun i => later_sep.mp, fun i => later_sep.mpr⟩
   later_persistently := ⟨fun i => later_persistently.mp, fun i => later_persistently.mpr⟩
   later_false_em {P} i := by
@@ -368,45 +405,41 @@ instance : BI (MonPred I PROP) where
 -- to `Sbi.toBI` rather than an independent section `BI PROP` (an instance diamond otherwise).
 
 -- BIBUpd instance
-
 instance [BIUpdate PROP] : BIUpdate (MonPred I PROP) where
-  intro := fun _ => BIUpdate.intro
-  mono H := fun i => BIUpdate.mono (H i)
-  trans := fun _ => BIUpdate.trans
-  frame_r := fun _ => BIUpdate.frame_r
+  intro _ := BIUpdate.intro
+  mono h i := BIUpdate.mono (h i)
+  trans _ := BIUpdate.trans
+  frame_r _ := BIUpdate.frame_r
 
 -- BIFUpd instance
-
 instance [BIFUpdate PROP] : BIFUpdate (MonPred I PROP) where
-  subset h := fun _ => BIFUpdate.subset h
-  except0 := fun _ => BIFUpdate.except0
-  mono H := fun i => BIFUpdate.mono (H i)
-  trans := fun _ => BIFUpdate.trans
-  mask_frame_r' h := fun i =>
-    (BIFUpdate.mono (PROP := PROP) ((forall_elim i).trans (pure_imp_elim refl))).trans
-      (BIFUpdate.mask_frame_r' h)
-  frame_r := fun _ => BIFUpdate.frame_r
+  subset h _ := BIFUpdate.subset h
+  except0 _ := BIFUpdate.except0
+  mono h i := BIFUpdate.mono (h i)
+  trans _ := BIFUpdate.trans
+  mask_frame_r' h i := by
+    refine .trans ?_ (BIFUpdate.mask_frame_r' h)
+    refine BIFUpdate.mono ?_
+    refine (forall_elim i).trans ?_; dsimp
+    exact pure_imp_elim refl
+  frame_r _ := BIFUpdate.frame_r
 
 -- BI Lob instance
-
 instance [BILoeb PROP] : BILoeb (MonPred I PROP) where
-  loeb_weak h := fun i => BILoeb.loeb_weak (h i)
+  loeb_weak h i := BILoeb.loeb_weak (h i)
 
 -- BIPositive instance
-
 instance [BIPositive PROP] : BIPositive (MonPred I PROP) where
-  affinely_sep_l := fun _ => BIPositive.affinely_sep_l
+  affinely_sep_l _ := BIPositive.affinely_sep_l
 
 -- BIAffine instance
-
 instance [BIAffine PROP] : BIAffine (MonPred I PROP) where
   affine _ := ⟨fun _ => Affine.affine⟩
 
 -- BIPersistentlyForall instance
-
 instance [BIPersistentlyForall PROP] : BIPersistentlyForall (MonPred I PROP) where
-  persistently_sForall_2 Ψ := by
-    refine fun i => .trans ?_ (persistently_mono (sForall_at Ψ i).mpr)
+  persistently_sForall_2 Ψ i := by
+    refine .trans ?_ (persistently_mono (sForall_at Ψ i).mpr)
     refine .trans ?_ (BIPersistentlyForall.persistently_sForall_2 (fun q => ∃ P, Ψ P ∧ P i = q))
     refine forall_intro fun q => imp_intro <| pure_elim_r ?_
     rintro ⟨P, hP, rfl⟩
@@ -417,10 +450,8 @@ instance [BIPersistentlyForall PROP] : BIPersistentlyForall (MonPred I PROP) whe
 -- can always be proven using classical logic, so no need for such instance
 
 -- BILaterContractive instance
-
 instance [BILaterContractive PROP] : BILaterContractive (MonPred I PROP) where
-  distLater_dist h i :=
-    (BILaterContractive.toContractive (PROP := PROP)).distLater_dist fun m hm => h m hm i
+  distLater_dist h i := BILaterContractive.toContractive.distLater_dist fun m hlt => h m hlt i
 
 -- BIEmbedEmp instance
 
@@ -430,7 +461,7 @@ instance [BILaterContractive PROP] : BILaterContractive (MonPred I PROP) where
 
 instance [BIUpdate PROP] [BIFUpdate PROP] [BIUpdateFUpdate PROP] :
     BIUpdateFUpdate (MonPred I PROP) where
-  fupd_of_bupd := fun _ => BIUpdateFUpdate.fupd_of_bupd
+  fupd_of_bupd _ := BIUpdateFUpdate.fupd_of_bupd
 
 -- BIEmbedBUpd instance
 -- BIEmbedFUpd instance
@@ -446,8 +477,6 @@ instance [BIUpdate PROP] [BIFUpdate PROP] [BIUpdateFUpdate PROP] :
 -- class Objective (for what?)
 -- bi_facts
 -- <obj> and <surj> notations
-
-end bidefs
 
 end MonPred
 
@@ -498,22 +527,15 @@ instance [SbiEmpValidExist PROP] [BIIndexBottom I] : SbiEmpValidExist (MonPred I
 instance [BIUpdate PROP] [BIBUpdateSbi PROP] : BIBUpdateSbi (MonPred I PROP) where
   bupd_si_pure Pi := fun _ => BIBUpdateSbi.bupd_si_pure Pi
 
--- NO `BIFUpdatePlainly` instance for `MonPred`. Standard Rocq Iris (`iris/bi/monpred.v`) gives
--- MonPred no `BiFUpdPlainly` instance either, and the laws genuinely fail in the general case:
---
---   * MonPred's plainly is *objective*: `■ P = <si_pure> <si_emp_valid> P`, so at every index
---     `(■ P).holds i = ■_PROP (∀ j, P j)` — it discards the index and asserts the validity of the
---     all-index conjunction `∀ j, P j`.
---   * MonPred's `fupd` is *index-local*: `(|={E1,E2}=> P).holds i = |={E1,E2}=> P.holds i`, so a
---     fupd at index `i` can only ever see index `i`.
---
--- A law like `fupd_plainly_sForall_2 : (|={E}=> ■ sForall Φ) ⊢ |={E}=> sForall Φ` reduces, at index
--- `i`, to recovering the *local* `(sForall Φ) i` from `■_PROP (∀ j, (sForall Φ) j)`. That fails on
--- two counts: (1) stripping the `■` needs `[Absorbing _]` (`plainly_elim` is not general), and
--- (2) the objective `∀ j` that `si_emp_valid` inserts sits between the plainly and the connective,
--- so PROP's own `BIFUpdatePlainly` laws (which expect `■ sForall …`) no longer match. Intuitively a
--- single index's fupd can neither *produce* the all-index witness `■ P` demands nor *consume* it down
--- to one index. Recovering an instance would require a strictly weaker statement with extra
--- hypotheses (e.g. `[BIAffine PROP]` for absorbingness, and/or `[BIIndexBottom I]`).
+-- NOTE: This instance is SPECULATIVE — standard Rocq Iris (`iris/bi/monpred.v`) gives MonPred no
+-- `BiFUpdPlainly` instance. MonPred's plainly is *objective* (`■ P = <si_pure> <si_emp_valid> P`,
+-- constant in the index) while `fupd` is index-local, and `■ P ⊢ P` needs `[Absorbing P]`. The
+-- three fupd-plainly laws are therefore not theorems for a general index/PROP; they would require
+-- extra structure (e.g. `BIIndexBottom` and/or affineness) that is not assumed here. Left as `sorry`
+-- pending a decision to either drop this instance or restate it with the needed side conditions.
+instance [BIFUpdate PROP] [BIFUpdatePlainly PROP] : BIFUpdatePlainly (MonPred I PROP) where
+  fupd_plainly_keep_l := sorry
+  fupd_plainly_later := sorry
+  fupd_plainly_sForall_2 := sorry
 
 end MonPred
