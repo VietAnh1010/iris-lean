@@ -26,7 +26,13 @@ instance : CoeSort BIIndex (Type _) := ⟨BIIndex.type⟩
 instance {I : BIIndex} : Inhabited I := I.inhabited
 instance {I : BIIndex} : Preorder I.rel := I.rel_preorder
 
-class BIIndexBottom where
+/-- `BIIndexBottom I` provides a least element `bot` of the index relation: it sits below every
+index. Mirrors Rocq's `BiIndexBottom {I} (bot : I) := bi_index_bot i : bot ⊑ i`; we bundle `bot` as
+a field (keyed on `I`) so that `[BIIndexBottom I]` determines it during instance synthesis. -/
+class BIIndexBottom (I : BIIndex) where
+  bot : I
+  bot_le (i : I) : I.rel bot i
+export BIIndexBottom (bot_le)
 
 structure MonPred (I : BIIndex) (PROP : Type _) [BI PROP] where
   holds : I → PROP
@@ -145,7 +151,9 @@ def bupd [BIUpdate PROP] (P : MonPred I PROP) : MonPred I PROP where
   holds i := iprop(|==> P i)
   mono h_rel := BIUpdate.mono (P.mono h_rel)
 
--- def fupd
+def fupd [BIFUpdate PROP] (E1 E2 : CoPset) (P : MonPred I PROP) : MonPred I PROP where
+  holds i := iprop(|={E1,E2}=> P i)
+  mono h_rel := BIFUpdate.mono (P.mono h_rel)
 
 def siPure [Sbi PROP] (Pi : SiProp) : MonPred I PROP where
   holds _ := iprop(<si_pure> Pi)
@@ -156,12 +164,18 @@ def siEmpValid [Sbi PROP] (P : MonPred I PROP) : SiProp :=
 
 instance [BIUpdate PROP] : BUpd (MonPred I PROP) := ⟨MonPred.bupd⟩
 
+instance [BIFUpdate PROP] : FUpd (MonPred I PROP) := ⟨MonPred.fupd⟩
+
 instance [Sbi PROP] : SiPure (MonPred I PROP) := ⟨MonPred.siPure⟩
 
 instance [Sbi PROP] : SiEmpValid (MonPred I PROP) := ⟨MonPred.siEmpValid⟩
 
 instance [BIUpdate PROP] : NonExpansive BUpd.bupd (α := MonPred I PROP) :=
   ⟨fun {_ _ _} h i => BIUpdate.bupd_ne.ne (h i)⟩
+
+instance [BIFUpdate PROP] {E1 E2 : CoPset} :
+    NonExpansive (FUpd.fupd E1 E2 (PROP := MonPred I PROP)) :=
+  ⟨fun {_ _ _} h i => BIFUpdate.ne.ne (h i)⟩
 
 theorem sForall_at (Ψ : MonPred I PROP → Prop) i :
     sForall Ψ i ⊣⊢ BI.sForall fun p => ∃ P, Ψ P ∧ P i = p := by
@@ -356,40 +370,68 @@ instance : BI (MonPred I PROP) where
 -- BIBUpd instance
 
 instance [BIUpdate PROP] : BIUpdate (MonPred I PROP) where
-  intro := sorry
-  mono := sorry
-  trans := sorry
-  frame_r := sorry
+  intro := fun _ => BIUpdate.intro
+  mono H := fun i => BIUpdate.mono (H i)
+  trans := fun _ => BIUpdate.trans
+  frame_r := fun _ => BIUpdate.frame_r
 
 -- BIFUpd instance
+
+instance [BIFUpdate PROP] : BIFUpdate (MonPred I PROP) where
+  subset h := fun _ => BIFUpdate.subset h
+  except0 := fun _ => BIFUpdate.except0
+  mono H := fun i => BIFUpdate.mono (H i)
+  trans := fun _ => BIFUpdate.trans
+  mask_frame_r' h := fun i =>
+    (BIFUpdate.mono (PROP := PROP) ((forall_elim i).trans (pure_imp_elim refl))).trans
+      (BIFUpdate.mask_frame_r' h)
+  frame_r := fun _ => BIFUpdate.frame_r
+
 -- BI Lob instance
 
-instance : BILoeb (MonPred I PROP) := sorry
+instance [BILoeb PROP] : BILoeb (MonPred I PROP) where
+  loeb_weak h := fun i => BILoeb.loeb_weak (h i)
 
 -- BIPositive instance
 
+instance [BIPositive PROP] : BIPositive (MonPred I PROP) where
+  affinely_sep_l := fun _ => BIPositive.affinely_sep_l
+
 -- BIAffine instance
 
-instance : BIAffine (MonPred I PROP) := sorry
+instance [BIAffine PROP] : BIAffine (MonPred I PROP) where
+  affine _ := ⟨fun _ => Affine.affine⟩
 
 -- BIPersistentlyForall instance
 
-instance : BIPersistentlyForall (MonPred I PROP) where
-  persistently_sForall_2 := sorry
+instance [BIPersistentlyForall PROP] : BIPersistentlyForall (MonPred I PROP) where
+  persistently_sForall_2 Ψ := by
+    refine fun i => .trans ?_ (persistently_mono (sForall_at Ψ i).mpr)
+    refine .trans ?_ (BIPersistentlyForall.persistently_sForall_2 (fun q => ∃ P, Ψ P ∧ P i = q))
+    refine forall_intro fun q => imp_intro <| pure_elim_r ?_
+    rintro ⟨P, hP, rfl⟩
+    exact (show (∀ p, ⌜Ψ p⌝ → <pers> p) ⊢ <pers> P from
+      (forall_elim P).trans (pure_imp_elim hP)) i
 
 -- BIPureForall instance
 -- can always be proven using classical logic, so no need for such instance
 
 -- BILaterContractive instance
 
-instance : BILaterContractive (MonPred I PROP) where
-  toContractive := sorry
+instance [BILaterContractive PROP] : BILaterContractive (MonPred I PROP) where
+  distLater_dist h i :=
+    (BILaterContractive.toContractive (PROP := PROP)).distLater_dist fun m hm => h m hm i
 
 -- BIEmbedEmp instance
 
 -- BIEmbedLater instance
 
 -- BIBUpdFUpd instance
+
+instance [BIUpdate PROP] [BIFUpdate PROP] [BIUpdateFUpdate PROP] :
+    BIUpdateFUpdate (MonPred I PROP) where
+  fupd_of_bupd := fun _ => BIUpdateFUpdate.fupd_of_bupd
+
 -- BIEmbedBUpd instance
 -- BIEmbedFUpd instance
 
@@ -399,7 +441,7 @@ instance : BILaterContractive (MonPred I PROP) where
 
 -- BiBUpdSbi instance: see the `[Sbi PROP]` block after `end MonPred` below.
 
--- BiFUpdSbi instance
+-- BiFUpdSbi instance: see the `[Sbi PROP]` block after `end MonPred` below.
 
 -- class Objective (for what?)
 -- bi_facts
@@ -441,10 +483,37 @@ instance : Sbi (MonPred I PROP) where
       (Sbi.siEmpValid_mono (forall_intro fun j => and_mono_r (forall_elim j)))
   prop_ext_siEmpValid := sorry
 
-instance : SbiEmpValidExist (MonPred I PROP) where
-  siEmpValid_sExists_1 := sorry
+-- Mirrors Rocq's `monPred_sbi_emp_valid_exist`, which needs a bottom index `bot`: instantiate the
+-- objective `∀ i` at `bot`, apply PROP's `siEmpValid_sExists_1`, then transport the witness `q = P
+-- bot` back to `<si_emp_valid> P` using `P bot ⊢ ∀ i, P i` (from `bot ≤ i`).
+instance [SbiEmpValidExist PROP] [BIIndexBottom I] : SbiEmpValidExist (MonPred I PROP) where
+  siEmpValid_sExists_1 Ψ := by
+    refine ((siEmpValid_mono (forall_elim BIIndexBottom.bot)).trans
+      ((siEmpValid_mono (sExists_at Ψ BIIndexBottom.bot).mp).trans
+        (SbiEmpValidExist.siEmpValid_sExists_1 _))).trans ?_
+    exact exists_elim fun p => pure_elim_l fun ⟨P, hP, hbot⟩ =>
+      exists_intro' P (and_intro (pure_intro hP)
+        (hbot ▸ siEmpValid_mono (forall_intro fun i => P.mono (bot_le i))))
 
-instance [BIUpdate PROP] : BIBUpdateSbi (MonPred I PROP) where
-  bupd_si_pure := sorry
+instance [BIUpdate PROP] [BIBUpdateSbi PROP] : BIBUpdateSbi (MonPred I PROP) where
+  bupd_si_pure Pi := fun _ => BIBUpdateSbi.bupd_si_pure Pi
+
+-- NO `BIFUpdatePlainly` instance for `MonPred`. Standard Rocq Iris (`iris/bi/monpred.v`) gives
+-- MonPred no `BiFUpdPlainly` instance either, and the laws genuinely fail in the general case:
+--
+--   * MonPred's plainly is *objective*: `■ P = <si_pure> <si_emp_valid> P`, so at every index
+--     `(■ P).holds i = ■_PROP (∀ j, P j)` — it discards the index and asserts the validity of the
+--     all-index conjunction `∀ j, P j`.
+--   * MonPred's `fupd` is *index-local*: `(|={E1,E2}=> P).holds i = |={E1,E2}=> P.holds i`, so a
+--     fupd at index `i` can only ever see index `i`.
+--
+-- A law like `fupd_plainly_sForall_2 : (|={E}=> ■ sForall Φ) ⊢ |={E}=> sForall Φ` reduces, at index
+-- `i`, to recovering the *local* `(sForall Φ) i` from `■_PROP (∀ j, (sForall Φ) j)`. That fails on
+-- two counts: (1) stripping the `■` needs `[Absorbing _]` (`plainly_elim` is not general), and
+-- (2) the objective `∀ j` that `si_emp_valid` inserts sits between the plainly and the connective,
+-- so PROP's own `BIFUpdatePlainly` laws (which expect `■ sForall …`) no longer match. Intuitively a
+-- single index's fupd can neither *produce* the all-index witness `■ P` demands nor *consume* it down
+-- to one index. Recovering an instance would require a strictly weaker statement with extra
+-- hypotheses (e.g. `[BIAffine PROP]` for absorbingness, and/or `[BIIndexBottom I]`).
 
 end MonPred
