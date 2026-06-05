@@ -16,28 +16,28 @@ import Iris.Std.RocqPorting
 namespace Iris.BI
 open Iris.Std OFE COFE
 
-structure BiIndex where
+structure BIIndex where
   type : Type _
   inhabited : Inhabited type
   rel : Relation type
   rel_preorder : Preorder rel
 
-instance : CoeSort BiIndex (Type _) := ⟨BiIndex.type⟩
-instance {I : BiIndex} : Inhabited I := I.inhabited
-instance {I : BiIndex} : Preorder I.rel := I.rel_preorder
+instance : CoeSort BIIndex (Type _) := ⟨BIIndex.type⟩
+instance {I : BIIndex} : Inhabited I := I.inhabited
+instance {I : BIIndex} : Preorder I.rel := I.rel_preorder
 
-class BiIndexBottom where
+class BIIndexBottom where
 
-structure MonPred (I : BiIndex) (PROP : Type _) [BI PROP] where
+structure MonPred (I : BIIndex) (PROP : Type _) [BI PROP] where
   holds : I → PROP
   mono : ∀ {i j : I}, I.rel i j → holds i ⊢ holds j
 
-instance {I : BiIndex} {PROP : Type _} [BI PROP] : CoeFun (MonPred I PROP) (fun _ => I → PROP) where
+instance {I : BIIndex} {PROP : Type _} [BI PROP] : CoeFun (MonPred I PROP) (fun _ => I → PROP) where
   coe x := x.holds
 
 section cofe
 
-variable {I : BiIndex} {PROP : Type _} [BI PROP]
+variable {I : BIIndex} {PROP : Type _} [BI PROP]
 
 instance : OFE (MonPred I PROP) where
   Equiv P Q := ∀ (i : I), P i ≡ Q i
@@ -57,15 +57,22 @@ def MonPred.proj (i : I) : MonPred I PROP -n> PROP where
 instance : COFE (MonPred I PROP) where
   compl c := {
     holds i := compl (c.map (MonPred.proj i))
-    mono {i₁ i₂} h := sorry
+    -- Monotonicity at the limit. We cannot use `LimitPreserving` over `MonPred I PROP` (its COFE
+    -- is exactly what we are defining), so we work in the function space `I → PROP`, which is
+    -- already a COFE. There, `LimitPreserving.entails` says `· i₁ ⊢ · i₂` survives limits; each
+    -- `c n` satisfies it by `(c n).mono`, and the two function-space limits are definitionally the
+    -- projected PROP limits above.
+    mono {i₁ i₂} h :=
+      let c' : Chain (I → PROP) := ⟨fun n => (c n).holds, fun hle j => c.cauchy hle j⟩
+      LimitPreserving.entails (applyHom i₁) (applyHom i₂) c' fun n => (c n).mono h
   }
-  conv_compl := sorry
+  conv_compl _ := conv_compl
 
 end cofe
 
 namespace MonPred
 
-variable {I : BiIndex} {PROP : Type _} [BI PROP]
+variable {I : BIIndex} {PROP : Type _} [BI PROP]
 
 section bidefs
 
@@ -154,7 +161,30 @@ instance [Sbi PROP] : SiPure (MonPred I PROP) := ⟨MonPred.siPure⟩
 instance [Sbi PROP] : SiEmpValid (MonPred I PROP) := ⟨MonPred.siEmpValid⟩
 
 instance [BIUpdate PROP] : NonExpansive BUpd.bupd (α := MonPred I PROP) :=
-  sorry
+  ⟨fun {_ _ _} h i => BIUpdate.bupd_ne.ne (h i)⟩
+
+theorem sForall_at (Ψ : MonPred I PROP → Prop) i :
+    sForall Ψ i ⊣⊢ BI.sForall fun p => ∃ P, Ψ P ∧ P i = p := by
+  constructor
+  · refine sForall_intro ?_
+    rintro _ ⟨P, hP, rfl⟩
+    refine (forall_elim P).trans ?_
+    exact pure_imp_elim hP
+  · refine forall_intro fun P => ?_
+    refine imp_intro ?_
+    refine pure_elim_r fun hP => ?_
+    exact sForall_elim ⟨P, hP, rfl⟩
+
+theorem sExists_at (Ψ : MonPred I PROP → Prop) i :
+    sExists Ψ i ⊣⊢ BI.sExists fun p => ∃ P, Ψ P ∧ P i = p := by
+  constructor
+  · refine exists_elim fun P => ?_
+    refine pure_elim_l fun hP => ?_
+    exact sExists_intro ⟨P, hP, rfl⟩
+  · refine sExists_elim ?_
+    rintro _ ⟨P, hP, rfl⟩
+    refine exists_intro' P ?_
+    exact and_intro (pure_intro hP) .rfl
 
 instance : BIBase (MonPred I PROP) where
   Entails := MonPred.Entails
@@ -189,10 +219,26 @@ instance : BI (MonPred I PROP) where
     exact imp_ne.ne (h₁ j) (h₂ j)
   sForall_ne {n Ψ₁ Ψ₂} h i := by
     obtain ⟨h₁, h₂⟩ := h
-    sorry
+    refine (equiv_iff.mpr (sForall_at Ψ₁ i)).dist.trans ?_
+    refine .trans ?_ (equiv_iff.mpr (sForall_at Ψ₂ i)).symm.dist
+    refine sForall_ne ⟨?_, ?_⟩
+    · rintro _ ⟨P, hP, rfl⟩
+      obtain ⟨Q, hQ, hPQ⟩ := h₁ P hP
+      exact ⟨Q i, ⟨Q, hQ, rfl⟩, hPQ i⟩
+    · rintro _ ⟨Q, hQ, rfl⟩
+      obtain ⟨P, hP, hPQ⟩ := h₂ Q hQ
+      exact ⟨P i, ⟨P, hP, rfl⟩, hPQ i⟩
   sExists_ne {n Ψ₁ Ψ₂} h i := by
     obtain ⟨h₁, h₂⟩ := h
-    sorry
+    refine (equiv_iff.mpr (sExists_at Ψ₁ i)).dist.trans ?_
+    refine .trans ?_ (equiv_iff.mpr (sExists_at Ψ₂ i)).symm.dist
+    refine sExists_ne ⟨?_, ?_⟩
+    · rintro _ ⟨P, hP, rfl⟩
+      obtain ⟨Q, hQ, hPQ⟩ := h₁ P hP
+      exact ⟨Q i, ⟨Q, hQ, rfl⟩, hPQ i⟩
+    · rintro _ ⟨Q, hQ, rfl⟩
+      obtain ⟨P, hP, hPQ⟩ := h₂ Q hQ
+      exact ⟨P i, ⟨P, hP, rfl⟩, hPQ i⟩
   sep_ne := ⟨fun n _ _ h₁ _ _ h₂ i => sep_ne.ne (h₁ i) (h₂ i)⟩
   wand_ne := by
     refine ⟨fun n _ _ h₁ _ _ h₂ i => ?_⟩
@@ -257,10 +303,27 @@ instance : BI (MonPred I PROP) where
   later_sForall_2 {Ψ} i := by
     refine .trans ?_ later_forall.mpr
     refine forall_intro fun P => ?_
-    refine (forall_elim (iprop(⌜Ψ P⌝ → ▷ P))).trans ?_
-    simp
-    sorry
-  later_sExists_false := sorry
+    refine (forall_elim iprop(⌜Ψ P⌝ → ▷ P)).trans ?_; dsimp
+    refine (pure_imp_elim ⟨P, rfl⟩).trans ?_
+    refine (forall_elim i).trans ?_; dsimp
+    refine (pure_imp_elim refl).trans ?_; dsimp
+    -- Key step: `(⌜Ψ P⌝ → ▷ P i) ⊢ ▷ (⌜Ψ P⌝ → P i)`. A pure implication `⌜φ⌝ → R`
+    -- is equivalent to the BI-forall `∀ _ : φ, R` indexed by proofs of `φ`.
+    refine .trans (forall_intro pure_imp_elim) ?_
+    refine later_forall_2.trans ?_
+    refine later_mono ?_
+    refine imp_intro ?_
+    exact pure_elim_r forall_elim
+  later_sExists_false {Ψ} i := by
+    refine (later_mono (sExists_at Ψ i).mp).trans ?_
+    refine later_sExists_false.trans ?_
+    refine or_mono .rfl ?_
+    refine exists_elim fun p => ?_
+    refine pure_elim_l ?_
+    rintro ⟨P, hP, rfl⟩
+    refine exists_intro' iprop(⌜Ψ P⌝ ∧ ▷ P) ?_; dsimp
+    refine and_intro (pure_intro ⟨P, rfl⟩) ?_
+    exact and_intro (pure_intro hP) .rfl
   later_sep := ⟨fun i => later_sep.mp, fun i => later_sep.mpr⟩
   later_persistently := ⟨fun i => later_persistently.mp, fun i => later_persistently.mpr⟩
   later_false_em {P} i := by
@@ -279,7 +342,16 @@ instance : BI (MonPred I PROP) where
 
 -- SBI instance
 
-instance : Sbi (MonPred I PROP) := sorry
+-- The SBI structure for `MonPred` mirrors Rocq's `monPred_sbi_mixin`. The two operations are
+-- pointwise/objective:
+--   `(siPure Pi) i = <si_pure> Pi`   (constant in `i`)
+--   `siEmpValid P  = <si_emp_valid> (∀ i, P i)`   (validity of the *objective* `∀ i, P i`)
+-- Most fields therefore discharge at each index `i` by the corresponding PROP-level law, after
+-- unfolding the (definitionally pointwise) connectives. `siEmpValid_forall` / `later_forall`
+-- turn the `∀ i` underneath `<si_emp_valid>` into a MonPred-level `∀`.
+-- SBI instance: see the dedicated `namespace MonPred` block after `end MonPred` below. It must
+-- live outside the namespace-level `variable [BI PROP]` so that `MonPred I PROP`'s `BI` resolves
+-- to `Sbi.toBI` rather than an independent section `BI PROP` (an instance diamond otherwise).
 
 -- BIBUpd instance
 
@@ -321,17 +393,11 @@ instance : BILaterContractive (MonPred I PROP) where
 -- BIEmbedBUpd instance
 -- BIEmbedFUpd instance
 
--- SbiEmpValidExist instance
-
-instance [Sbi PROP] : SbiEmpValidExist (MonPred I PROP) where
-  siEmpValid_sExists_1 := sorry
+-- SbiEmpValidExist instance: see the `[Sbi PROP]` block after `end MonPred` below.
 
 -- BiEmbedSbi instance
 
--- BiBUpdSbi instance
-
-instance [BIUpdate PROP] : BIBUpdateSbi (MonPred I PROP) where
-  bupd_si_pure := sorry
+-- BiBUpdSbi instance: see the `[Sbi PROP]` block after `end MonPred` below.
 
 -- BiFUpdSbi instance
 
@@ -340,5 +406,45 @@ instance [BIUpdate PROP] : BIBUpdateSbi (MonPred I PROP) where
 -- <obj> and <surj> notations
 
 end bidefs
+
+end MonPred
+
+namespace MonPred
+
+-- The `Sbi`-dependent instances live here, in a scope with *only* `[Sbi PROP]` (and no independent
+-- `[BI PROP]`). This is essential: under the namespace-level `variable [BI PROP]` above, `MonPred I
+-- PROP` would carry a second `BI PROP` distinct from `Sbi.toBI`, so lemmas like `forall_mono` would
+-- synthesize the section `BI` while the PROP-level `Sbi` laws live over `Sbi.toBI` — an instance
+-- diamond. With only `[Sbi PROP]` in scope, `MonPred I PROP`'s `BI` resolves to `Sbi.toBI` and the
+-- pointwise/objective field proofs line up. Each field mirrors Rocq's `monPred_sbi_mixin`:
+--   `(siPure Pi) i = <si_pure> Pi`   (constant in `i`)
+--   `siEmpValid P  = <si_emp_valid> (∀ i, P i)`   (validity of the *objective* `∀ i, P i`).
+variable {I : BIIndex} {PROP : Type _} [Sbi PROP]
+
+instance : Sbi (MonPred I PROP) where
+  siPure_ne := ⟨fun {_ _ _} h _ => Sbi.siPure_ne.ne h⟩
+  siEmpValid_ne := ⟨fun {_ _ _} h => Sbi.siEmpValid_ne.ne (forall_ne fun i => h i)⟩
+  siPure_mono H _ := Sbi.siPure_mono H
+  siEmpValid_mono H := Sbi.siEmpValid_mono (forall_mono fun i => H i)
+  siEmpValid_siPure :=
+    ⟨(Sbi.siEmpValid_mono (forall_elim default)).trans Sbi.siEmpValid_siPure.mp,
+     Sbi.siEmpValid_siPure.mpr.trans (Sbi.siEmpValid_mono (forall_intro fun _ => .rfl))⟩
+  siPure_siEmpValid i := Sbi.siPure_siEmpValid.trans (persistently_mono (forall_elim i))
+  siPure_imp_mpr i := (forall_elim i).trans ((pure_imp_elim refl).trans Sbi.siPure_imp_mpr)
+  siPure_sForall_mpr := sorry
+  persistently_imp_siPure := sorry
+  siPure_later := ⟨fun _ => Sbi.siPure_later.mp, fun _ => Sbi.siPure_later.mpr⟩
+  siPure_absorbing _ := ⟨fun i => (Sbi.siPure_absorbing _).absorbing⟩
+  siEmpValid_later_mp := (Sbi.siEmpValid_mono later_forall.mpr).trans Sbi.siEmpValid_later_mp
+  siEmpValid_affinely_mpr :=
+    Sbi.siEmpValid_affinely_mpr.trans
+      (Sbi.siEmpValid_mono (forall_intro fun j => and_mono_r (forall_elim j)))
+  prop_ext_siEmpValid := sorry
+
+instance : SbiEmpValidExist (MonPred I PROP) where
+  siEmpValid_sExists_1 := sorry
+
+instance [BIUpdate PROP] : BIBUpdateSbi (MonPred I PROP) where
+  bupd_si_pure := sorry
 
 end MonPred
