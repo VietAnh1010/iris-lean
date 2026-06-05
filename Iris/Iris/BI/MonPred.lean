@@ -123,20 +123,23 @@ def sForall (Ψ : MonPred I PROP -> Prop) : MonPred I PROP where
   holds i := BI.sForall fun p => ∃ P, Ψ P ∧ P i = p
   mono h_rel := by
     refine sForall_intro ?_
-    rintro _ ⟨Q, hQ, rfl⟩
-    exact (sForall_elim ⟨Q, hQ, rfl⟩).trans (Q.mono h_rel)
+    rintro _ ⟨P, hP, rfl⟩
+    exact (sForall_elim ⟨P, hP, rfl⟩).trans (P.mono h_rel)
 
 def sExists (Ψ : MonPred I PROP -> Prop) : MonPred I PROP where
   holds i := BI.sExists fun p => ∃ P, Ψ P ∧ P i = p
   mono h_rel := by
     refine sExists_elim ?_
-    rintro _ ⟨Q, hQ, rfl⟩
-    exact (Q.mono h_rel).trans (sExists_intro ⟨Q, hQ, rfl⟩)
+    rintro _ ⟨P, hP, rfl⟩
+    exact (P.mono h_rel).trans (sExists_intro ⟨P, hP, rfl⟩)
 
+-- sForall can also be defined in an alternative (but equivalent way), however
+-- this is harder to work with
 def sForall' (Ψ : MonPred I PROP -> Prop) : MonPred I PROP where
   holds i := iprop(∀ P, ⌜Ψ P⌝ → P i)
   mono h_rel := forall_mono fun P => imp_mono_r (P.mono h_rel)
 
+-- Ditto for sExists
 def sExists' (Ψ : MonPred I PROP -> Prop) : MonPred I PROP where
   holds i := iprop(∃ P, ⌜Ψ P⌝ ∧ P i)
   mono h_rel := exists_mono fun P => and_mono_r (P.mono h_rel)
