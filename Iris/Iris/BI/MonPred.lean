@@ -395,7 +395,11 @@ instance : BI (MonPred I PROP) where
 -- BI Later instance
 -- proven inside BI
 
--- BI Embed instance (what is this?)
+-- Embed instances (DEFERRED — not ported). `MonPred.embed` exists as a plain `def` (above), but the
+-- generic `Embed`/`BiEmbed` typeclass hierarchy that Rocq's `embedding.v` provides does not exist in
+-- iris-lean, so none of the embed instances below are ported:
+--   BiEmbed · BiEmbedEmp · BiEmbedLater · BiEmbedBUpd · BiEmbedFUpd · BiEmbedSbi · embed_objective
+-- See `MonPred-porting-notes.md` § "Decision (session 3): do NOT port the generic BiEmbed infra".
 
 -- SBI instance
 
@@ -459,21 +463,12 @@ instance [BIPersistentlyForall PROP] : BIPersistentlyForall (MonPred I PROP) whe
 instance [BILaterContractive PROP] : BILaterContractive (MonPred I PROP) where
   distLater_dist h i := BILaterContractive.toContractive.distLater_dist fun m hlt => h m hlt i
 
--- BIEmbedEmp instance
-
--- BIEmbedLater instance
-
 -- BIBUpdFUpd instance
 instance [BIUpdate PROP] [BIFUpdate PROP] [BIUpdateFUpdate PROP] :
     BIUpdateFUpdate (MonPred I PROP) where
   fupd_of_bupd _ := BIUpdateFUpdate.fupd_of_bupd
 
--- BIEmbedBUpd instance
--- BIEmbedFUpd instance
-
 -- SbiEmpValidExist instance: see the `[Sbi PROP]` block after `end MonPred` below.
-
--- BiEmbedSbi instance
 
 -- BiBUpdSbi instance: see the `[Sbi PROP]` block after `end MonPred` below.
 
@@ -626,14 +621,12 @@ instance impl_objective [Objective P] [Objective Q] : Objective iprop(P → Q) :
   intro i j
   refine forall_intro fun k => imp_intro <| and_elim_l.trans ?_
   refine (forall_elim i).trans ?_
-  refine (pure_imp_elim (refl : I.rel i i)).trans ?_
-  exact imp_mono (objective_at k i) (objective_at i k)⟩
+  exact (pure_imp_elim (refl : I.rel i i)).trans (imp_mono (objective_at k i) (objective_at i k))⟩
 instance wand_objective [Objective P] [Objective Q] : Objective iprop(P -∗ Q) := ⟨by
   intro i j
   refine forall_intro fun k => imp_intro <| and_elim_l.trans ?_
   refine (forall_elim i).trans ?_
-  refine (pure_imp_elim (refl : I.rel i i)).trans ?_
-  exact wand_mono (objective_at k i) (objective_at i k)⟩
+  exact (pure_imp_elim (refl : I.rel i i)).trans (wand_mono (objective_at k i) (objective_at i k))⟩
 
 -- The pointwise modalities lift objectivity directly (`(▷ P).holds i = ▷ (P i)`, etc.).
 instance later_objective [Objective P] : Objective iprop(▷ P) :=
@@ -731,8 +724,7 @@ instance : Sbi (MonPred I PROP) where
     intro Ψi i
     -- Project at `i`, peel the upclosed `→` at its own index, then apply the PROP-level law.
     refine ((forall_at _ i).mp.trans (forall_mono fun _ => ?_)).trans Sbi.siPure_sForall_mpr
-    refine (forall_elim i).trans ?_
-    exact pure_imp_elim refl
+    exact (forall_elim i).trans (pure_imp_elim refl)
   persistently_imp_siPure := by
     intro Pi Q i
     -- Peel the upclosed `→` at `i` (`Q` is recovered at other indices `j ⊒ i` by monotonicity),
@@ -740,8 +732,7 @@ instance : Sbi (MonPred I PROP) where
     refine (forall_elim i).trans ?_
     refine (pure_imp_elim refl).trans ?_
     refine Sbi.persistently_imp_siPure.trans (persistently_mono ?_)
-    refine forall_intro fun j => imp_intro' <| pure_elim_l fun hr => ?_
-    exact imp_mono_r (Q.mono hr)
+    exact forall_intro fun j => imp_intro' <| pure_elim_l fun hr => imp_mono_r (Q.mono hr)
   siPure_later := ⟨fun _ => Sbi.siPure_later.mp, fun _ => Sbi.siPure_later.mpr⟩
   siPure_absorbing _ := ⟨fun i => (Sbi.siPure_absorbing _).absorbing⟩
   siEmpValid_later_mp := (Sbi.siEmpValid_mono later_forall.mpr).trans Sbi.siEmpValid_later_mp
@@ -755,10 +746,8 @@ instance : Sbi (MonPred I PROP) where
     refine (forall_intro fun j => ?_).trans internalEq_2
     refine (siEmpValid_mono ?_).trans Sbi.prop_ext_siEmpValid
     refine (forall_elim j).trans (and_mono ?_ ?_)
-    · refine (forall_elim j).trans ?_
-      exact pure_imp_elim refl
-    · refine (forall_elim j).trans ?_
-      exact pure_imp_elim refl
+    · exact (forall_elim j).trans (pure_imp_elim refl)
+    · exact (forall_elim j).trans (pure_imp_elim refl)
 
 -- `<si_pure> Pi` and `■ P` are *objective for any argument*: `(<si_pure> Pi).holds i = <si_pure> Pi`
 -- and `(■ P).holds i = <si_pure> (<si_emp_valid> (∀ j, P j))` are both constant in `i` (no `[Objective
