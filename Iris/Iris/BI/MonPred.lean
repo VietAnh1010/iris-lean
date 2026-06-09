@@ -32,7 +32,6 @@ a field (keyed on `I`) so that `[BIIndexBottom I]` determines it during instance
 class BIIndexBottom (I : BIIndex) where
   bot : I
   bot_le (i : I) : I.rel bot i
-export BIIndexBottom (bot_le)
 
 structure MonPred (I : BIIndex) (PROP : Type _) [BI PROP] where
   holds : I → PROP
@@ -100,10 +99,14 @@ def pure (φ : Prop) : MonPred I PROP where
   holds _ := iprop(⌜φ⌝)
   mono _ := .rfl
 
+/-- `<obj> Ψ`: force `Ψ` at *every* index. `holds _ = ∀ i, Ψ i` (constant in the index),
+so the result is objective. Mirrors Rocq's `monPred_objectively`. -/
 def objectively (Ψ : I → PROP) : MonPred I PROP where
   holds _ := iprop(∀ i, Ψ i)
   mono _ := .rfl
 
+/-- `<subj> Ψ`: force `Ψ` at *some* index. `holds _ = ∃ i, Ψ i` (constant in the index),
+so the result is objective. Mirrors Rocq's `monPred_subjectively`. -/
 def subjectively (Ψ : I → PROP) : MonPred I PROP where
   holds _ := iprop(∃ i, Ψ i)
   mono _ := .rfl
@@ -461,7 +464,6 @@ instance [BILaterContractive PROP] : BILaterContractive (MonPred I PROP) where
 -- BIEmbedLater instance
 
 -- BIBUpdFUpd instance
-
 instance [BIUpdate PROP] [BIFUpdate PROP] [BIUpdateFUpdate PROP] :
     BIUpdateFUpdate (MonPred I PROP) where
   fupd_of_bupd _ := BIUpdateFUpdate.fupd_of_bupd
@@ -477,9 +479,219 @@ instance [BIUpdate PROP] [BIFUpdate PROP] [BIUpdateFUpdate PROP] :
 
 -- BiFUpdSbi instance: see the `[Sbi PROP]` block after `end MonPred` below.
 
--- class Objective (for what?)
--- bi_facts
--- <obj> and <surj> notations
+/-! ## Objective predicates and the `<obj>` / `<subj>` modalities
+
+Mirrors Rocq's `Objective`, `monPred_objectively`, `monPred_subjectively` theory (`bi_facts`).
+`<obj> P` forces `P` at *every* index (`holds _ = ∀ i, P i`); `<subj> P` at *some* index
+(`holds _ = ∃ i, P i`). An `Objective P` predicate does not depend on the index. -/
+
+/-- `Objective P`: the predicate does not depend on the index, i.e. `P i ⊢ P j` for all `i j`.
+Mirrors Rocq's `Objective`. -/
+class Objective (P : MonPred I PROP) : Prop where
+  objective_at (i j : I) : P i ⊢ P j
+
+export Objective (objective_at)
+
+@[inherit_doc objectively] syntax:max "<obj> " term:40 : term
+@[inherit_doc subjectively] syntax:max "<subj> " term:40 : term
+
+-- `objectively`/`subjectively` take a raw `I → PROP`; we elaborate the body at `MonPred _ _`
+-- (so inner connectives like `∧`/`∗` resolve via the `MonPred` BI) and let the `CoeFun`
+-- coercion turn it into the `I → PROP` argument.
+macro_rules
+  | `(iprop(<obj> $P))  => ``(MonPred.objectively (iprop($P) : MonPred _ _))
+  | `(iprop(<subj> $P)) => ``(MonPred.subjectively (iprop($P) : MonPred _ _))
+
+delab_rule MonPred.objectively
+  | `($_ $P) => do ``(iprop(<obj> $(← unpackIprop P)))
+delab_rule MonPred.subjectively
+  | `($_ $P) => do ``(iprop(<subj> $(← unpackIprop P)))
+
+section objectively
+variable {P Q : MonPred I PROP}
+
+theorem objectively_mono (h : P ⊢ Q) : iprop(<obj> P) ⊢ iprop(<obj> Q) :=
+  fun _ => forall_mono fun j => h j
+
+theorem objectively_elim : iprop(<obj> P) ⊢ P := fun i => forall_elim i
+
+theorem objectively_idemp : iprop(<obj> <obj> P) ⊣⊢ iprop(<obj> P) :=
+  ⟨fun i => forall_elim i, fun _ => forall_intro fun _ => .rfl⟩
+
+theorem objectively_forall {α : Sort _} (Φ : α → MonPred I PROP) :
+    iprop(<obj> (∀ x, Φ x)) ⊣⊢ iprop(∀ x, <obj> (Φ x)) :=
+  ⟨fun i => (forall_intro fun x => forall_intro fun k =>
+      ((forall_elim k).trans (forall_at Φ k).mp).trans (forall_elim x)).trans
+        (forall_at (fun x => iprop(<obj> (Φ x))) i).mpr,
+   fun i => forall_intro fun k => (forall_intro fun x =>
+      ((forall_at (fun x => iprop(<obj> (Φ x))) i).mp.trans (forall_elim x)).trans
+        (forall_elim k)).trans (forall_at Φ k).mpr⟩
+
+theorem objectively_exist {α : Sort _} (Φ : α → MonPred I PROP) :
+    iprop(∃ x, <obj> (Φ x)) ⊢ iprop(<obj> (∃ x, Φ x)) :=
+  fun i => (exists_at (fun x => iprop(<obj> (Φ x))) i).mp.trans
+    (exists_elim fun x => forall_intro fun k =>
+      (forall_elim k).trans ((exists_intro x).trans (exists_at Φ k).mpr))
+
+theorem objectively_and : iprop(<obj> (P ∧ Q)) ⊣⊢ iprop(<obj> P ∧ <obj> Q) :=
+  ⟨fun _ => and_intro (forall_mono fun _ => and_elim_l) (forall_mono fun _ => and_elim_r),
+   fun _ => forall_intro fun k =>
+     and_intro (and_elim_l.trans (forall_elim k)) (and_elim_r.trans (forall_elim k))⟩
+
+theorem objectively_or : iprop(<obj> P ∨ <obj> Q) ⊢ iprop(<obj> (P ∨ Q)) :=
+  fun _ => or_elim (forall_mono fun _ => or_intro_l) (forall_mono fun _ => or_intro_r)
+
+theorem objectively_sep_2 : iprop(<obj> P ∗ <obj> Q) ⊢ iprop(<obj> (P ∗ Q)) :=
+  fun _ => forall_intro fun k => sep_mono (forall_elim k) (forall_elim k)
+
+theorem objectively_sep [BIIndexBottom I] : iprop(<obj> (P ∗ Q)) ⊣⊢ iprop(<obj> P ∗ <obj> Q) :=
+  ⟨fun _ => (forall_elim BIIndexBottom.bot).trans
+     (sep_mono (forall_intro fun j => P.mono (BIIndexBottom.bot_le j))
+       (forall_intro fun j => Q.mono (BIIndexBottom.bot_le j))),
+   objectively_sep_2⟩
+
+theorem objectively_emp : iprop(<obj> (emp : MonPred I PROP)) ⊣⊢ iprop(emp) :=
+  ⟨fun i => forall_elim i, fun _ => forall_intro fun _ => .rfl⟩
+
+theorem objectively_pure {φ : Prop} : iprop(<obj> (⌜φ⌝ : MonPred I PROP)) ⊣⊢ iprop(⌜φ⌝) :=
+  ⟨fun i => forall_elim i, fun _ => forall_intro fun _ => .rfl⟩
+
+/-! ### The `<subj>` modality -/
+
+theorem subjectively_mono (h : P ⊢ Q) : iprop(<subj> P) ⊢ iprop(<subj> Q) :=
+  fun _ => exists_mono fun j => h j
+
+theorem subjectively_intro : P ⊢ iprop(<subj> P) := fun i => exists_intro i
+
+theorem subjectively_forall {α : Sort _} (Φ : α → MonPred I PROP) :
+    iprop(<subj> (∀ x, Φ x)) ⊢ iprop(∀ x, <subj> (Φ x)) :=
+  fun i => (forall_intro fun x => exists_elim fun k =>
+    ((forall_at Φ k).mp.trans (forall_elim x)).trans (exists_intro k)).trans
+      (forall_at (fun x => iprop(<subj> (Φ x))) i).mpr
+
+theorem subjectively_and : iprop(<subj> (P ∧ Q)) ⊢ iprop(<subj> P ∧ <subj> Q) :=
+  fun _ => and_intro (exists_mono fun _ => and_elim_l) (exists_mono fun _ => and_elim_r)
+
+theorem subjectively_exist {α : Sort _} (Φ : α → MonPred I PROP) :
+    iprop(<subj> (∃ x, Φ x)) ⊣⊢ iprop(∃ x, <subj> (Φ x)) :=
+  ⟨fun i => (exists_elim fun k => (exists_at Φ k).mp.trans (exists_elim fun x =>
+      exists_intro' x (exists_intro k))).trans
+        (exists_at (fun x => iprop(<subj> (Φ x))) i).mpr,
+   fun i => (exists_at (fun x => iprop(<subj> (Φ x))) i).mp.trans
+      (exists_elim fun x => exists_elim fun k =>
+        ((exists_intro x).trans (exists_at Φ k).mpr).trans (exists_intro k))⟩
+
+theorem subjectively_or : iprop(<subj> (P ∨ Q)) ⊣⊢ iprop(<subj> P ∨ <subj> Q) :=
+  ⟨fun _ => exists_elim fun k => or_mono (exists_intro k) (exists_intro k),
+   fun _ => or_elim (exists_mono fun _ => or_intro_l) (exists_mono fun _ => or_intro_r)⟩
+
+theorem subjectively_sep : iprop(<subj> (P ∗ Q)) ⊢ iprop(<subj> P ∗ <subj> Q) :=
+  fun _ => exists_elim fun k => sep_mono (exists_intro k) (exists_intro k)
+
+theorem subjectively_idemp : iprop(<subj> <subj> P) ⊣⊢ iprop(<subj> P) :=
+  ⟨fun _ => exists_elim fun _ => .rfl, fun i => exists_intro i⟩
+
+/-! ### `Objective` predicates: `<obj>`/`<subj>` collapse, and closure instances -/
+
+theorem objective_objectively (P : MonPred I PROP) [Objective P] : P ⊢ iprop(<obj> P) :=
+  fun i => forall_intro fun k => objective_at i k
+
+theorem objective_subjectively (P : MonPred I PROP) [Objective P] : iprop(<subj> P) ⊢ P :=
+  fun i => exists_elim fun k => objective_at k i
+
+instance pure_objective {φ : Prop} : Objective (iprop(⌜φ⌝) : MonPred I PROP) := ⟨fun _ _ => .rfl⟩
+instance emp_objective : Objective (iprop(emp) : MonPred I PROP) := ⟨fun _ _ => .rfl⟩
+instance objectively_objective : Objective iprop(<obj> P) := ⟨fun _ _ => .rfl⟩
+instance subjectively_objective : Objective iprop(<subj> P) := ⟨fun _ _ => .rfl⟩
+
+instance and_objective [Objective P] [Objective Q] : Objective iprop(P ∧ Q) :=
+  ⟨fun i j => and_mono (objective_at i j) (objective_at i j)⟩
+instance or_objective [Objective P] [Objective Q] : Objective iprop(P ∨ Q) :=
+  ⟨fun i j => or_mono (objective_at i j) (objective_at i j)⟩
+instance sep_objective [Objective P] [Objective Q] : Objective iprop(P ∗ Q) :=
+  ⟨fun i j => sep_mono (objective_at i j) (objective_at i j)⟩
+instance persistently_objective [Objective P] : Objective iprop(<pers> P) :=
+  ⟨fun i j => persistently_mono (objective_at i j)⟩
+
+instance forall_objective {α : Sort _} (Φ : α → MonPred I PROP) [∀ x, Objective (Φ x)] :
+    Objective iprop(∀ x, Φ x) :=
+  ⟨fun i j => ((forall_at Φ i).mp.trans (forall_mono fun _ => objective_at i j)).trans
+    (forall_at Φ j).mpr⟩
+instance exists_objective {α : Sort _} (Φ : α → MonPred I PROP) [∀ x, Objective (Φ x)] :
+    Objective iprop(∃ x, Φ x) :=
+  ⟨fun i j => ((exists_at Φ i).mp.trans (exists_mono fun _ => objective_at i j)).trans
+    (exists_at Φ j).mpr⟩
+
+instance impl_objective [Objective P] [Objective Q] : Objective iprop(P → Q) := ⟨by
+  intro i j
+  refine forall_intro fun k => imp_intro <| and_elim_l.trans ?_
+  refine (forall_elim i).trans ?_
+  refine (pure_imp_elim (refl : I.rel i i)).trans ?_
+  exact imp_mono (objective_at k i) (objective_at i k)⟩
+instance wand_objective [Objective P] [Objective Q] : Objective iprop(P -∗ Q) := ⟨by
+  intro i j
+  refine forall_intro fun k => imp_intro <| and_elim_l.trans ?_
+  refine (forall_elim i).trans ?_
+  refine (pure_imp_elim (refl : I.rel i i)).trans ?_
+  exact wand_mono (objective_at k i) (objective_at i k)⟩
+
+-- The pointwise modalities lift objectivity directly (`(▷ P).holds i = ▷ (P i)`, etc.).
+instance later_objective [Objective P] : Objective iprop(▷ P) :=
+  ⟨fun i j => later_mono (objective_at i j)⟩
+instance except0_objective [Objective P] : Objective iprop(◇ P) :=
+  ⟨fun i j => except0_mono (objective_at i j)⟩
+instance laterN_objective [Objective P] {n : Nat} : Objective iprop(▷^[n] P) := by
+  induction n with
+  | zero => exact inferInstanceAs (Objective P)
+  | succ n ih => exact later_objective (P := iprop(▷^[n] P))
+instance bupd_objective [BIUpdate PROP] [Objective P] : Objective iprop(|==> P) :=
+  ⟨fun i j => BIUpdate.mono (objective_at i j)⟩
+instance fupd_objective [BIFUpdate PROP] {E1 E2 : CoPset} [Objective P] :
+    Objective iprop(|={E1,E2}=> P) :=
+  ⟨fun i j => BIFUpdate.mono (objective_at i j)⟩
+
+end objectively
+
+/-! ### Lifting `Persistent`/`Absorbing`/`Affine` through the (pointwise) index
+
+`<pers>`, `<absorb>`, `emp` are all pointwise on `MonPred`, so each of these classes holds for `P`
+iff it holds at every index. Mirrors Rocq's `monPred_persistent`/`absorbing`/`affine` and the
+`monPred_at_*` reverse projections. -/
+
+theorem monPred_persistent {P : MonPred I PROP} (h : ∀ i, Persistent (P i)) : Persistent P :=
+  ⟨fun i => (h i).persistent⟩
+theorem monPred_absorbing {P : MonPred I PROP} (h : ∀ i, Absorbing (P i)) : Absorbing P :=
+  ⟨fun i => (h i).absorbing⟩
+theorem monPred_affine {P : MonPred I PROP} (h : ∀ i, Affine (P i)) : Affine P :=
+  ⟨fun i => (h i).affine⟩
+
+instance monPred_at_persistent {P : MonPred I PROP} [Persistent P] (i : I) : Persistent (P i) :=
+  ⟨(Persistent.persistent (P := P)) i⟩
+instance monPred_at_absorbing {P : MonPred I PROP} [Absorbing P] (i : I) : Absorbing (P i) :=
+  ⟨(Absorbing.absorbing (P := P)) i⟩
+instance monPred_at_affine {P : MonPred I PROP} [Affine P] (i : I) : Affine (P i) :=
+  ⟨(Affine.affine (P := P)) i⟩
+
+/-! ### `Persistent`/`Absorbing`/`Affine` for `<obj>`/`<subj>`
+
+At index `i`, `<obj> P` is `∀ j, P j` and `<subj> P` is `∃ j, P j` (constant in `i`), so these reduce
+to the corresponding PROP-level quantifier facts. `<obj>` persistence needs `BiPersistentlyForall`
+(to push `<pers>` through `∀`), exactly as in Rocq. -/
+
+instance objectively_persistent {P : MonPred I PROP} [BIPersistentlyForall PROP] [Persistent P] :
+    Persistent iprop(<obj> P) :=
+  ⟨fun _ => (forall_mono fun j => Persistent.persistent (P := P j)).trans persistently_forall.mpr⟩
+instance objectively_absorbing {P : MonPred I PROP} [Absorbing P] : Absorbing iprop(<obj> P) :=
+  ⟨fun _ => absorbingly_forall_1.trans (forall_mono fun j => Absorbing.absorbing (P := P j))⟩
+instance objectively_affine {P : MonPred I PROP} [Affine P] : Affine iprop(<obj> P) :=
+  ⟨fun i => (forall_elim i).trans (Affine.affine (P := P i))⟩
+
+instance subjectively_persistent {P : MonPred I PROP} [Persistent P] : Persistent iprop(<subj> P) :=
+  ⟨fun _ => (exists_mono fun j => Persistent.persistent (P := P j)).trans persistently_exists.mpr⟩
+instance subjectively_absorbing {P : MonPred I PROP} [Absorbing P] : Absorbing iprop(<subj> P) :=
+  ⟨fun _ => absorbingly_exists.1.trans (exists_mono fun j => Absorbing.absorbing (P := P j))⟩
+instance subjectively_affine {P : MonPred I PROP} [Affine P] : Affine iprop(<subj> P) :=
+  ⟨fun _ => exists_elim fun j => Affine.affine (P := P j)⟩
 
 end MonPred
 
@@ -495,6 +707,16 @@ namespace MonPred
 --   `siEmpValid P  = <si_emp_valid> (∀ i, P i)`   (validity of the *objective* `∀ i, P i`).
 variable {I : BIIndex} {PROP : Type _} [Sbi PROP]
 
+-- Internal equality of `MonPred`s is pointwise: `MonPred`'s `Dist` is `∀ i, P i ≡{n}≡ Q i`, which is
+-- exactly the function `Dist` on `holds`. So `fun_ext_internalEq` (on `holds`) plus the
+-- definitional `Dist` match (`internalEq_entails`) give the `∀ i`-introduction direction we need for
+-- `prop_ext_siEmpValid`. Mirrors the `sig_equivI`/`discrete_fun_equivI` step in Rocq's
+-- `monPred_sbi_prop_ext_mixin`.
+theorem internalEq_2 {P Q : MonPred I PROP} :
+    iprop(∀ i, SiProp.internalEq (P i) (Q i)) ⊢ SiProp.internalEq P Q :=
+  (SiProp.fun_ext_internalEq P.holds Q.holds).trans
+    ((SiProp.internalEq_entails P.holds Q.holds P Q).mpr fun _ h => h)
+
 instance : Sbi (MonPred I PROP) where
   siPure_ne := ⟨fun {_ _ _} h _ => Sbi.siPure_ne.ne h⟩
   siEmpValid_ne := ⟨fun {_ _ _} h => Sbi.siEmpValid_ne.ne (forall_ne fun i => h i)⟩
@@ -505,15 +727,45 @@ instance : Sbi (MonPred I PROP) where
      Sbi.siEmpValid_siPure.mpr.trans (Sbi.siEmpValid_mono (forall_intro fun _ => .rfl))⟩
   siPure_siEmpValid i := Sbi.siPure_siEmpValid.trans (persistently_mono (forall_elim i))
   siPure_imp_mpr i := (forall_elim i).trans ((pure_imp_elim refl).trans Sbi.siPure_imp_mpr)
-  siPure_sForall_mpr := sorry
-  persistently_imp_siPure := sorry
+  siPure_sForall_mpr := by
+    intro Ψi i
+    -- Project at `i`, peel the upclosed `→` at its own index, then apply the PROP-level law.
+    refine ((forall_at _ i).mp.trans (forall_mono fun _ => ?_)).trans Sbi.siPure_sForall_mpr
+    refine (forall_elim i).trans ?_
+    exact pure_imp_elim refl
+  persistently_imp_siPure := by
+    intro Pi Q i
+    -- Peel the upclosed `→` at `i` (`Q` is recovered at other indices `j ⊒ i` by monotonicity),
+    -- apply the PROP-level law, then rebuild the upclosed `∀ j` under `<pers>`.
+    refine (forall_elim i).trans ?_
+    refine (pure_imp_elim refl).trans ?_
+    refine Sbi.persistently_imp_siPure.trans (persistently_mono ?_)
+    refine forall_intro fun j => imp_intro' <| pure_elim_l fun hr => ?_
+    exact imp_mono_r (Q.mono hr)
   siPure_later := ⟨fun _ => Sbi.siPure_later.mp, fun _ => Sbi.siPure_later.mpr⟩
   siPure_absorbing _ := ⟨fun i => (Sbi.siPure_absorbing _).absorbing⟩
   siEmpValid_later_mp := (Sbi.siEmpValid_mono later_forall.mpr).trans Sbi.siEmpValid_later_mp
   siEmpValid_affinely_mpr :=
     Sbi.siEmpValid_affinely_mpr.trans
       (Sbi.siEmpValid_mono (forall_intro fun j => and_mono_r (forall_elim j)))
-  prop_ext_siEmpValid := sorry
+  prop_ext_siEmpValid := by
+    intro P Q
+    -- Reduce target `internalEq P Q` to `∀ j, internalEq (P j) (Q j)` (`internalEq_2`); at each `j`
+    -- peel the upclosed wands of `P ∗-∗ Q` down to `P j ∗-∗ Q j` and apply the PROP-level law.
+    refine (forall_intro fun j => ?_).trans internalEq_2
+    refine (siEmpValid_mono ?_).trans Sbi.prop_ext_siEmpValid
+    refine (forall_elim j).trans (and_mono ?_ ?_)
+    · refine (forall_elim j).trans ?_
+      exact pure_imp_elim refl
+    · refine (forall_elim j).trans ?_
+      exact pure_imp_elim refl
+
+-- `<si_pure> Pi` and `■ P` are *objective for any argument*: `(<si_pure> Pi).holds i = <si_pure> Pi`
+-- and `(■ P).holds i = <si_pure> (<si_emp_valid> (∀ j, P j))` are both constant in `i` (no `[Objective
+-- P]` hypothesis needed). Mirrors Rocq's `si_pure_objective`, `plainly_objective`.
+instance si_pure_objective (Pi : SiProp) : Objective (iprop(<si_pure> Pi) : MonPred I PROP) :=
+  ⟨fun _ _ => .rfl⟩
+instance plainly_objective (P : MonPred I PROP) : Objective iprop(■ P) := ⟨fun _ _ => .rfl⟩
 
 -- Mirrors Rocq's `monPred_sbi_emp_valid_exist`, which needs a bottom index `bot`: instantiate the
 -- objective `∀ i` at `bot`, apply PROP's `siEmpValid_sExists_1`, then transport the witness `q = P
@@ -525,20 +777,32 @@ instance [SbiEmpValidExist PROP] [BIIndexBottom I] : SbiEmpValidExist (MonPred I
         (SbiEmpValidExist.siEmpValid_sExists_1 _))).trans ?_
     exact exists_elim fun p => pure_elim_l fun ⟨P, hP, hbot⟩ =>
       exists_intro' P (and_intro (pure_intro hP)
-        (hbot ▸ siEmpValid_mono (forall_intro fun i => P.mono (bot_le i))))
+        (hbot ▸ siEmpValid_mono (forall_intro fun i => P.mono (BIIndexBottom.bot_le i))))
 
 instance [BIUpdate PROP] [BIBUpdateSbi PROP] : BIBUpdateSbi (MonPred I PROP) where
   bupd_si_pure Pi := fun _ => BIBUpdateSbi.bupd_si_pure Pi
 
--- NOTE: This instance is SPECULATIVE — standard Rocq Iris (`iris/bi/monpred.v`) gives MonPred no
--- `BiFUpdPlainly` instance. MonPred's plainly is *objective* (`■ P = <si_pure> <si_emp_valid> P`,
--- constant in the index) while `fupd` is index-local, and `■ P ⊢ P` needs `[Absorbing P]`. The
--- three fupd-plainly laws are therefore not theorems for a general index/PROP; they would require
--- extra structure (e.g. `BIIndexBottom` and/or affineness) that is not assumed here. Left as `sorry`
--- pending a decision to either drop this instance or restate it with the needed side conditions.
+-- `BIFUpdatePlainly` for `MonPred`. This mirrors Rocq's `monPred_bi_fupd_sbi`. The key fact is that
+-- `MonPred`'s plainly is *objective*: `(■ P).holds i = <si_pure> <si_emp_valid> (∀ j, P j) = ■ (∀ j,
+-- P j)` (definitionally), constant in `i`. So at each index `i` we feed the *objective body* `∀ j, P
+-- j` to the PROP-level law — which itself strips the `■` — then reindex the result at `i` via
+-- `forall_elim i` under `fupd`/`▷`/`◇`. (The PROP laws do the plainly-elimination internally, so —
+-- unlike the older speculative note suggested — no `BIIndexBottom`/affineness side condition is
+-- needed here.)
 instance [BIFUpdate PROP] [BIFUpdatePlainly PROP] : BIFUpdatePlainly (MonPred I PROP) where
-  fupd_plainly_keep_l := sorry
-  fupd_plainly_later := sorry
-  fupd_plainly_sForall_2 := sorry
+  fupd_plainly_keep_l E E' P R i := by
+    -- Peel the *upclosed* wand at `i` (`forall_elim i` + `pure_imp_elim refl`); the explicit type
+    -- on `hw` records that `(|={E,E'}=> ■ P).holds i` is `|={E,E'}=> ■ (∀ j, P j)`.
+    have hw : (iprop(R -∗ |={E,E'}=> ■ P)).holds i ⊢ iprop(R.holds i -∗ |={E,E'}=> ■ (∀ j, P j)) :=
+      (forall_elim i).trans (pure_imp_elim refl)
+    refine (sep_mono_l hw).trans ?_
+    refine (BIFUpdatePlainly.fupd_plainly_keep_l E E' (iprop(∀ j, P j)) (R.holds i)).trans ?_
+    exact BIFUpdate.mono (sep_mono_l (forall_elim i))
+  fupd_plainly_later E P i :=
+    (BIFUpdatePlainly.fupd_plainly_later E (iprop(∀ j, P j))).trans
+      (BIFUpdate.mono (later_mono (except0_mono (forall_elim i))))
+  fupd_plainly_sForall_2 E Φ i :=
+    (BIFUpdate.mono (plainly_mono (forall_elim i))).trans
+      (BIFUpdatePlainly.fupd_plainly_sForall_2 E (fun p => ∃ Q, Φ Q ∧ Q.holds i = p))
 
 end MonPred
