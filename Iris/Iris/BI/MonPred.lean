@@ -13,9 +13,10 @@ import Iris.Std.RocqPorting
 
 @[expose] public section
 
-namespace Iris.BI
-open Iris.Std OFE COFE
+namespace Iris
+open BI Std OFE COFE Sbi
 
+@[rocq_alias biIndex]
 structure BIIndex where
   type : Type _
   inhabited : Inhabited type
@@ -26,9 +27,8 @@ instance : CoeSort BIIndex (Type _) := ⟨BIIndex.type⟩
 instance {I : BIIndex} : Inhabited I := I.inhabited
 instance {I : BIIndex} : Preorder I.rel := I.rel_preorder
 
-/-- `BIIndexBottom I` provides a least element `bot` of the index relation: it sits below every
-index. Mirrors Rocq's `BiIndexBottom {I} (bot : I) := bi_index_bot i : bot ⊑ i`; we bundle `bot` as
-a field (keyed on `I`) so that `[BIIndexBottom I]` determines it during instance synthesis. -/
+@[rocq_alias BiIndexBottom]
+-- NOT FAITHFUL TO THE ROCQ VERSION, TO BE FIXED
 class BIIndexBottom (I : BIIndex) where
   bot : I
   bot_le (i : I) : I.rel bot i
@@ -59,6 +59,7 @@ def MonPred.proj (i : I) : MonPred I PROP -n> PROP where
   f P := P i
   ne := ⟨fun {_ _ _} h => h i⟩
 
+@[rocq_alias monPred_cofe]
 instance : COFE (MonPred I PROP) where
   compl c := {
     holds i := compl (c.map (MonPred.proj i))
@@ -195,15 +196,8 @@ instance [Sbi PROP] : SiEmpValid (MonPred I PROP) := ⟨MonPred.siEmpValid⟩
 instance [BIUpdate PROP] : NonExpansive BUpd.bupd (α := MonPred I PROP) :=
   ⟨fun {_ _ _} h i => BIUpdate.bupd_ne.ne (h i)⟩
 
-instance [BIFUpdate PROP] {E1 E2 : CoPset} :
-    NonExpansive (FUpd.fupd E1 E2 (PROP := MonPred I PROP)) :=
+instance [BIFUpdate PROP] {E1 E2 : CoPset} : NonExpansive (FUpd.fupd E1 E2 (PROP := MonPred I PROP)) :=
   ⟨fun {_ _ _} h i => BIFUpdate.ne.ne (h i)⟩
-
--- With the value-indexed definition of `sForall`/`sExists`, projecting at an index `i` is now
--- *definitionally* the corresponding PROP-level quantifier, so these bridge lemmas are `.rfl`. They
--- are kept as named lemmas so the call sites below (and the BI instance) keep reading clearly.
-theorem sForall_at (Ψ : MonPred I PROP → Prop) i :
-    sForall Ψ i ⊣⊢ BI.sForall fun p => ∃ P, Ψ P ∧ P i = p := .rfl
 
 theorem sExists_at (Ψ : MonPred I PROP → Prop) i :
     sExists Ψ i ⊣⊢ BI.sExists fun p => ∃ P, Ψ P ∧ P i = p := .rfl
@@ -263,6 +257,7 @@ instance : Preorder BIBase.Entails (α := MonPred I PROP) where
   refl _ := .rfl
   trans h₁ h₂ i := (h₁ i).trans (h₂ i)
 
+@[rocq_alias monPredI]
 instance : BI (MonPred I PROP) where
   entails_preorder := inferInstance
   equiv_iff {P Q} := by
@@ -401,20 +396,8 @@ instance : BI (MonPred I PROP) where
 --   BiEmbed · BiEmbedEmp · BiEmbedLater · BiEmbedBUpd · BiEmbedFUpd · BiEmbedSbi · embed_objective
 -- See `MonPred-porting-notes.md` § "Decision (session 3): do NOT port the generic BiEmbed infra".
 
--- SBI instance
-
--- The SBI structure for `MonPred` mirrors Rocq's `monPred_sbi_mixin`. The two operations are
--- pointwise/objective:
---   `(siPure Pi) i = <si_pure> Pi`   (constant in `i`)
---   `siEmpValid P  = <si_emp_valid> (∀ i, P i)`   (validity of the *objective* `∀ i, P i`)
--- Most fields therefore discharge at each index `i` by the corresponding PROP-level law, after
--- unfolding the (definitionally pointwise) connectives. `siEmpValid_forall` / `later_forall`
--- turn the `∀ i` underneath `<si_emp_valid>` into a MonPred-level `∀`.
--- SBI instance: see the dedicated `namespace MonPred` block after `end MonPred` below. It must
--- live outside the namespace-level `variable [BI PROP]` so that `MonPred I PROP`'s `BI` resolves
--- to `Sbi.toBI` rather than an independent section `BI PROP` (an instance diamond otherwise).
-
 -- BIBUpd instance
+@[rocq_alias monPred_bi_bupd]
 instance [BIUpdate PROP] : BIUpdate (MonPred I PROP) where
   intro _ := BIUpdate.intro
   mono h i := BIUpdate.mono (h i)
@@ -422,6 +405,7 @@ instance [BIUpdate PROP] : BIUpdate (MonPred I PROP) where
   frame_r _ := BIUpdate.frame_r
 
 -- BIFUpd instance
+@[rocq_alias monPred_bi_fupd]
 instance [BIFUpdate PROP] : BIFUpdate (MonPred I PROP) where
   subset h _ := BIFUpdate.subset h
   except0 _ := BIFUpdate.except0
@@ -434,38 +418,44 @@ instance [BIFUpdate PROP] : BIFUpdate (MonPred I PROP) where
     exact pure_imp_elim refl
   frame_r _ := BIFUpdate.frame_r
 
--- BI Lob instance
+-- BiLöb instance
+@[rocq_alias monPred_bi_löb]
 instance [BILoeb PROP] : BILoeb (MonPred I PROP) where
   loeb_weak h i := BILoeb.loeb_weak (h i)
 
--- BIPositive instance
+-- BiPositive instance
+@[rocq_alias monPred_bi_positive]
 instance [BIPositive PROP] : BIPositive (MonPred I PROP) where
   affinely_sep_l _ := BIPositive.affinely_sep_l
 
--- BIAffine instance
+-- BiAffine instance
+@[rocq_alias monPred_bi_affine]
 instance [BIAffine PROP] : BIAffine (MonPred I PROP) where
   affine _ := ⟨fun _ => Affine.affine⟩
 
--- BIPersistentlyForall instance
+-- BiPersistentlyForall instance
+@[rocq_alias monPred_bi_persistently_forall]
 instance [BIPersistentlyForall PROP] : BIPersistentlyForall (MonPred I PROP) where
   persistently_sForall_2 Ψ i := by
-    refine .trans ?_ (persistently_mono (sForall_at Ψ i).mpr)
-    refine .trans ?_ (BIPersistentlyForall.persistently_sForall_2 (fun q => ∃ P, Ψ P ∧ P i = q))
-    refine forall_intro fun q => imp_intro <| pure_elim_r ?_
+    refine .trans ?_ (BIPersistentlyForall.persistently_sForall_2 (fun p => ∃ P, Ψ P ∧ P i = p))
+    refine forall_intro fun p => ?_
+    refine imp_intro ?_
+    refine pure_elim_r ?_
     rintro ⟨P, hP, rfl⟩
-    exact (show (∀ p, ⌜Ψ p⌝ → <pers> p) ⊢ <pers> P from
-      (forall_elim P).trans (pure_imp_elim hP)) i
+    have entails : (∀ p, ⌜Ψ p⌝ → <pers> p) ⊢ <pers> P := (forall_elim P).trans (pure_imp_elim hP)
+    exact entails i
 
--- BIPureForall instance
+-- BiPureForall instance
 -- can always be proven using classical logic, so no need for such instance
 
--- BILaterContractive instance
+-- BiLaterContractive instance
+@[rocq_alias monPred_bi_later_contractive]
 instance [BILaterContractive PROP] : BILaterContractive (MonPred I PROP) where
   distLater_dist h i := BILaterContractive.toContractive.distLater_dist fun m hlt => h m hlt i
 
--- BIBUpdFUpd instance
-instance [BIUpdate PROP] [BIFUpdate PROP] [BIUpdateFUpdate PROP] :
-    BIUpdateFUpdate (MonPred I PROP) where
+-- BiBUpdFUpd instance
+@[rocq_alias monPred_bi_bupd_fupd]
+instance [BIUpdate PROP] [BIFUpdate PROP] [BIUpdateFUpdate PROP] : BIUpdateFUpdate (MonPred I PROP) where
   fupd_of_bupd _ := BIUpdateFUpdate.fupd_of_bupd
 
 -- SbiEmpValidExist instance: see the `[Sbi PROP]` block after `end MonPred` below.
@@ -710,44 +700,63 @@ theorem internalEq_2 {P Q : MonPred I PROP} :
   (SiProp.fun_ext_internalEq P.holds Q.holds).trans
     ((SiProp.internalEq_entails P.holds Q.holds P Q).mpr fun _ h => h)
 
+-- SBI instance
+
+-- The SBI structure for `MonPred` mirrors Rocq's `monPred_sbi_mixin`. The two operations are
+-- pointwise/objective:
+--   `(siPure Pi) i = <si_pure> Pi`   (constant in `i`)
+--   `siEmpValid P  = <si_emp_valid> (∀ i, P i)`   (validity of the *objective* `∀ i, P i`)
+-- Most fields therefore discharge at each index `i` by the corresponding PROP-level law, after
+-- unfolding the (definitionally pointwise) connectives. `siEmpValid_forall` / `later_forall`
+-- turn the `∀ i` underneath `<si_emp_valid>` into a MonPred-level `∀`.
+-- SBI instance: see the dedicated `namespace MonPred` block after `end MonPred` below. It must
+-- live outside the namespace-level `variable [BI PROP]` so that `MonPred I PROP`'s `BI` resolves
+-- to `Sbi.toBI` rather than an independent section `BI PROP` (an instance diamond otherwise).
+@[rocq_alias monPred_sbi]
 instance : Sbi (MonPred I PROP) where
-  siPure_ne := ⟨fun {_ _ _} h _ => Sbi.siPure_ne.ne h⟩
-  siEmpValid_ne := ⟨fun {_ _ _} h => Sbi.siEmpValid_ne.ne (forall_ne fun i => h i)⟩
-  siPure_mono H _ := Sbi.siPure_mono H
-  siEmpValid_mono H := Sbi.siEmpValid_mono (forall_mono fun i => H i)
-  siEmpValid_siPure :=
-    ⟨(Sbi.siEmpValid_mono (forall_elim default)).trans Sbi.siEmpValid_siPure.mp,
-     Sbi.siEmpValid_siPure.mpr.trans (Sbi.siEmpValid_mono (forall_intro fun _ => .rfl))⟩
-  siPure_siEmpValid i := Sbi.siPure_siEmpValid.trans (persistently_mono (forall_elim i))
-  siPure_imp_mpr i := (forall_elim i).trans ((pure_imp_elim refl).trans Sbi.siPure_imp_mpr)
-  siPure_sForall_mpr := by
-    intro Ψi i
-    -- Project at `i`, peel the upclosed `→` at its own index, then apply the PROP-level law.
-    refine ((forall_at _ i).mp.trans (forall_mono fun _ => ?_)).trans Sbi.siPure_sForall_mpr
-    exact (forall_elim i).trans (pure_imp_elim refl)
-  persistently_imp_siPure := by
-    intro Pi Q i
-    -- Peel the upclosed `→` at `i` (`Q` is recovered at other indices `j ⊒ i` by monotonicity),
-    -- apply the PROP-level law, then rebuild the upclosed `∀ j` under `<pers>`.
+  siPure_ne := ⟨fun {_ _ _} h _ => siPure_ne.ne h⟩
+  siEmpValid_ne := ⟨fun {_ _ _} h => siEmpValid_ne.ne (forall_ne fun i => h i)⟩
+  siPure_mono h i := siPure_mono h
+  siEmpValid_mono h := siEmpValid_mono (forall_mono fun i => h i)
+  siEmpValid_siPure := by
+    refine ⟨?_, ?_⟩
+    · exact (siEmpValid_mono (forall_elim default)).trans siEmpValid_siPure.mp
+    · exact siEmpValid_siPure.mpr.trans (siEmpValid_mono (forall_intro fun _ => .rfl))
+  siPure_siEmpValid i := siPure_siEmpValid.trans (persistently_mono (forall_elim i))
+  siPure_imp_mpr i := by
+    refine (forall_elim i).trans ?_; dsimp
+    exact (pure_imp_elim refl).trans siPure_imp_mpr
+  siPure_sForall_mpr {Ψ} i := by
+    refine .trans ?_ siPure_sForall_mpr
+    refine forall_intro fun pi => ?_
+    refine imp_intro ?_
+    refine pure_elim_r fun hpi => ?_
+    have entails : (∀ pi, ⌜Ψ pi⌝ → <si_pure> pi) ⊢@{MonPred I PROP} <si_pure> pi :=
+      (forall_elim pi).trans (pure_imp_elim hpi)
+    exact entails i
+  persistently_imp_siPure {pi P} i := by
     refine (forall_elim i).trans ?_
     refine (pure_imp_elim refl).trans ?_
-    refine Sbi.persistently_imp_siPure.trans (persistently_mono ?_)
-    exact forall_intro fun j => imp_intro' <| pure_elim_l fun hr => imp_mono_r (Q.mono hr)
-  siPure_later := ⟨fun _ => Sbi.siPure_later.mp, fun _ => Sbi.siPure_later.mpr⟩
-  siPure_absorbing _ := ⟨fun i => (Sbi.siPure_absorbing _).absorbing⟩
-  siEmpValid_later_mp := (Sbi.siEmpValid_mono later_forall.mpr).trans Sbi.siEmpValid_later_mp
-  siEmpValid_affinely_mpr :=
-    Sbi.siEmpValid_affinely_mpr.trans
-      (Sbi.siEmpValid_mono (forall_intro fun j => and_mono_r (forall_elim j)))
-  prop_ext_siEmpValid := by
-    intro P Q
-    -- Reduce target `internalEq P Q` to `∀ j, internalEq (P j) (Q j)` (`internalEq_2`); at each `j`
-    -- peel the upclosed wands of `P ∗-∗ Q` down to `P j ∗-∗ Q j` and apply the PROP-level law.
-    refine (forall_intro fun j => ?_).trans internalEq_2
-    refine (siEmpValid_mono ?_).trans Sbi.prop_ext_siEmpValid
-    refine (forall_elim j).trans (and_mono ?_ ?_)
-    · exact (forall_elim j).trans (pure_imp_elim refl)
-    · exact (forall_elim j).trans (pure_imp_elim refl)
+    refine persistently_imp_siPure.trans ?_
+    refine persistently_mono ?_
+    refine forall_intro fun j => ?_; dsimp
+    refine imp_intro ?_
+    refine pure_elim_r fun h_rel => ?_
+    exact imp_mono_r (P.mono h_rel)
+  siPure_later := ⟨fun _ => siPure_later.mp, fun _ => siPure_later.mpr⟩
+  siPure_absorbing {pi} := ⟨fun _ => (siPure_absorbing pi).absorbing⟩
+  siEmpValid_later_mp := (siEmpValid_mono later_forall.mpr).trans siEmpValid_later_mp
+  siEmpValid_affinely_mpr := by
+    refine siEmpValid_affinely_mpr.trans ?_
+    refine siEmpValid_mono ?_
+    refine forall_intro fun i => ?_
+    exact and_mono_r (forall_elim i)
+  prop_ext_siEmpValid {P Q} := by
+    refine (forall_intro fun i => ?_).trans internalEq_2
+    refine (siEmpValid_mono ?_).trans prop_ext_siEmpValid
+    refine (forall_elim i).trans (and_mono ?_ ?_)
+    · exact (forall_elim i).trans (pure_imp_elim refl)
+    · exact (forall_elim i).trans (pure_imp_elim refl)
 
 -- `<si_pure> Pi` and `■ P` are *objective for any argument*: `(<si_pure> Pi).holds i = <si_pure> Pi`
 -- and `(■ P).holds i = <si_pure> (<si_emp_valid> (∀ j, P j))` are both constant in `i` (no `[Objective
