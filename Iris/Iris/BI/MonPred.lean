@@ -213,6 +213,17 @@ instance : BIBase (MonPred I PROP) where
   persistently := MonPred.persistently
   later := MonPred.later
 
+theorem upclosed_force {Ψ : I → PROP} i : upclosed Ψ i ⊢ Ψ i :=
+  (forall_elim i).trans (pure_imp_elim refl)
+
+@[rocq_alias monPred_impl_force]
+theorem imp_force {P Q : MonPred I PROP} i : iprop(P → Q) i ⊢ P i → Q i :=
+  upclosed_force i
+
+@[rocq_alias monPred_wand_force]
+theorem wand_force {P Q : MonPred I PROP} i : iprop(P -∗ Q) i ⊢ P i -∗ Q i :=
+  upclosed_force i
+
 instance : Preorder BIBase.Entails (α := MonPred I PROP) where
   refl _ := .rfl
   trans h₁ h₂ i := (h₁ i).trans (h₂ i)
@@ -227,8 +238,9 @@ instance : BI (MonPred I PROP) where
   and_ne := ⟨fun n _ _ h₁ _ _ h₂ i => and_ne.ne (h₁ i) (h₂ i)⟩
   or_ne := ⟨fun n _ _ h₁ _ _ h₂ i => or_ne.ne (h₁ i) (h₂ i)⟩
   imp_ne := by
-    refine ⟨fun n _ _ h₁ _ _ h₂ i => ?_⟩
-    refine forall_ne fun j => ?_
+    constructor
+    intro n P₁ P₂ h₁ Q₁ Q₂ h₂ i
+    refine forall_ne fun j => ?_; dsimp
     refine imp_ne.ne .rfl ?_
     exact imp_ne.ne (h₁ j) (h₂ j)
   sForall_ne {n Ψ₁ Ψ₂} h i := by
@@ -251,7 +263,8 @@ instance : BI (MonPred I PROP) where
       exact ⟨P i, ⟨P, hP, rfl⟩, hPQ i⟩
   sep_ne := ⟨fun n _ _ h₁ _ _ h₂ i => sep_ne.ne (h₁ i) (h₂ i)⟩
   wand_ne := by
-    refine ⟨fun n _ _ h₁ _ _ h₂ i => ?_⟩
+    constructor
+    intro n P₁ P₂ h₁ Q₁ Q₂ h₂ i
     refine forall_ne fun j => ?_
     refine imp_ne.ne .rfl ?_
     exact wand_ne.ne (h₁ j) (h₂ j)
@@ -266,7 +279,7 @@ instance : BI (MonPred I PROP) where
   or_intro_r i := or_intro_r
   or_elim h₁ h₂ i := or_elim (h₁ i) (h₂ i)
   imp_intro {P Q R} h i := by
-    refine forall_intro fun j => ?_
+    refine forall_intro fun j => ?_; dsimp
     refine imp_intro ?_
     refine pure_elim_r fun h_rel => ?_
     refine (P.mono h_rel).trans ?_
@@ -274,8 +287,7 @@ instance : BI (MonPred I PROP) where
   imp_elim h i := by
     refine imp_elim ?_
     refine (h i).trans ?_
-    refine (forall_elim i).trans ?_
-    exact pure_imp_elim refl
+    exact imp_force i
   sForall_intro {P Ψ} h i := by
     refine sForall_intro ?_
     rintro _ ⟨Q, hQ, rfl⟩
@@ -291,7 +303,7 @@ instance : BI (MonPred I PROP) where
   sep_symm i := sep_symm
   sep_assoc_l i := sep_assoc_l
   wand_intro {P Q R} h i := by
-    refine forall_intro fun j => ?_
+    refine forall_intro fun j => ?_; dsimp
     refine imp_intro ?_
     refine pure_elim_r fun h_rel => ?_
     refine (P.mono h_rel).trans ?_
@@ -299,8 +311,7 @@ instance : BI (MonPred I PROP) where
   wand_elim h i := by
     refine wand_elim ?_
     refine (h i).trans ?_
-    refine (forall_elim i).trans ?_
-    exact pure_imp_elim refl
+    exact wand_force i
   persistently_mono h i := persistently_mono (h i)
   persistently_idem_2 i := persistently_idem_2
   persistently_emp_2 i := persistently_emp_2
@@ -324,8 +335,7 @@ instance : BI (MonPred I PROP) where
     refine pure_elim_r ?_
     rintro ⟨P, hP, rfl⟩
     refine (sForall_elim ⟨iprop(⌜Ψ P⌝ → ▷ P), ⟨P, rfl⟩, rfl⟩).trans ?_
-    refine (forall_elim i).trans ?_; dsimp
-    refine (pure_imp_elim refl).trans ?_
+    refine (imp_force i).trans ?_
     exact pure_imp_elim hP
   later_sExists_false {Ψ} i := by
     refine later_sExists_false.trans ?_
@@ -434,11 +444,10 @@ instance [BIFUpdate PROP] : BIFUpdate (MonPred I PROP) where
   except0 _ := BIFUpdate.except0
   mono h i := BIFUpdate.mono (h i)
   trans _ := BIFUpdate.trans
-  mask_frame_r' h i := by
+  mask_frame_r' {E₁ E₂ Ef P} h i := by
     refine .trans ?_ (BIFUpdate.mask_frame_r' h)
     refine BIFUpdate.mono ?_
-    refine (forall_elim i).trans ?_; dsimp
-    exact pure_imp_elim refl
+    exact imp_force i
   frame_r _ := BIFUpdate.frame_r
 
 -- BiLöb instance
@@ -465,8 +474,10 @@ instance [BIPersistentlyForall PROP] : BIPersistentlyForall (MonPred I PROP) whe
     refine imp_intro ?_
     refine pure_elim_r ?_
     rintro ⟨P, hP, rfl⟩
-    have entails : (∀ p, ⌜Ψ p⌝ → <pers> p) ⊢ <pers> P := (forall_elim P).trans (pure_imp_elim hP)
-    exact entails i
+    refine (forall_at i).mp.trans ?_
+    refine (forall_elim P).trans ?_
+    refine (imp_force i).trans ?_
+    exact pure_imp_elim hP
 
 -- BiPureForall instance
 -- can always be proven using classical logic, so no need for such instance
@@ -673,8 +684,7 @@ instance imp_objective [Objective P] [Objective Q] : Objective iprop(P → Q) :=
   refine forall_intro fun k => ?_; dsimp
   refine imp_intro ?_
   refine and_elim_l.trans ?_ -- ignore pure hypothesis
-  refine (forall_elim i).trans ?_
-  refine (pure_imp_elim refl).trans ?_
+  refine (imp_force i).trans ?_
   exact imp_mono (Objective.holds k i) (Objective.holds i k)
 
 @[rocq_alias wand_objective]
@@ -684,8 +694,7 @@ instance wand_objective [Objective P] [Objective Q] : Objective iprop(P -∗ Q) 
   refine forall_intro fun k => ?_; dsimp
   refine imp_intro ?_
   refine and_elim_l.trans ?_ -- ignore pure hypothesis
-  refine (forall_elim i).trans ?_
-  refine (pure_imp_elim refl).trans ?_; dsimp
+  refine (wand_force i).trans ?_
   exact wand_mono (Objective.holds k i) (Objective.holds i k)
 
 @[rocq_alias later_objective]
@@ -789,20 +798,18 @@ instance : Sbi (MonPred I PROP) where
     · exact (siEmpValid_mono (forall_elim default)).trans siEmpValid_siPure.mp
     · exact siEmpValid_siPure.mpr.trans (siEmpValid_mono (forall_intro fun _ => .rfl))
   siPure_siEmpValid i := siPure_siEmpValid.trans (persistently_mono (forall_elim i))
-  siPure_imp_mpr i := by
-    refine (forall_elim i).trans ?_; dsimp
-    exact (pure_imp_elim refl).trans siPure_imp_mpr
+  siPure_imp_mpr i := (imp_force i).trans siPure_imp_mpr
   siPure_sForall_mpr {Ψ} i := by
     refine .trans ?_ siPure_sForall_mpr
     refine forall_intro fun Pi => ?_
     refine imp_intro ?_
     refine pure_elim_r fun hPi => ?_
-    have entails : (∀ Pi, ⌜Ψ Pi⌝ → <si_pure> Pi) ⊢@{MonPred I PROP} <si_pure> Pi :=
-      (forall_elim Pi).trans (pure_imp_elim hPi)
-    exact entails i
+    refine (forall_at i).mp.trans ?_
+    refine (forall_elim Pi).trans ?_
+    refine (imp_force i).trans ?_
+    exact pure_imp_elim hPi
   persistently_imp_siPure {Pi P} i := by
-    refine (forall_elim i).trans ?_; dsimp
-    refine (pure_imp_elim refl).trans ?_
+    refine (imp_force i).trans ?_
     refine persistently_imp_siPure.trans ?_
     refine persistently_mono ?_
     refine forall_intro fun j => ?_; dsimp
@@ -822,9 +829,8 @@ instance : Sbi (MonPred I PROP) where
     refine forall_intro fun i => ?_
     refine .trans ?_ prop_ext_siEmpValid
     refine siEmpValid_mono ?_
-    refine (forall_elim i).trans (and_mono ?_ ?_)
-    · exact (forall_elim i).trans (pure_imp_elim refl)
-    · exact (forall_elim i).trans (pure_imp_elim refl)
+    refine (forall_elim i).trans ?_
+    exact and_mono (wand_force i) (wand_force i)
 
 @[rocq_alias si_pure_objective]
 instance si_pure_objective {Pi : SiProp} : Objective (iprop(<si_pure> Pi) : MonPred I PROP) :=
@@ -850,27 +856,23 @@ instance [SbiEmpValidExist PROP] [BIIndexBottom I] : SbiEmpValidExist (MonPred I
 instance [BIUpdate PROP] [BIBUpdateSbi PROP] : BIBUpdateSbi (MonPred I PROP) where
   bupd_si_pure Pi _ := BIBUpdateSbi.bupd_si_pure Pi
 
--- `BIFUpdatePlainly` for `MonPred`. This mirrors Rocq's `monPred_bi_fupd_sbi`. The key fact is that
--- `MonPred`'s plainly is *objective*: `(■ P).holds i = <si_pure> <si_emp_valid> (∀ j, P j) = ■ (∀ j,
--- P j)` (definitionally), constant in `i`. So at each index `i` we feed the *objective body* `∀ j, P
--- j` to the PROP-level law — which itself strips the `■` — then reindex the result at `i` via
--- `forall_elim i` under `fupd`/`▷`/`◇`. (The PROP laws do the plainly-elimination internally, so —
--- unlike the older speculative note suggested — no `BIIndexBottom`/affineness side condition is
--- needed here.)
 instance [BIFUpdate PROP] [BIFUpdatePlainly PROP] : BIFUpdatePlainly (MonPred I PROP) where
   fupd_plainly_keep_l E E' P R i := by
-    -- Peel the *upclosed* wand at `i` (`forall_elim i` + `pure_imp_elim refl`); the explicit type
-    -- on `hw` records that `(|={E,E'}=> ■ P).holds i` is `|={E,E'}=> ■ (∀ j, P j)`.
-    have hw : (iprop(R -∗ |={E,E'}=> ■ P)).holds i ⊢ iprop(R.holds i -∗ |={E,E'}=> ■ (∀ j, P j)) :=
-      (forall_elim i).trans (pure_imp_elim refl)
-    refine (sep_mono_l hw).trans ?_
-    refine (BIFUpdatePlainly.fupd_plainly_keep_l E E' (iprop(∀ j, P j)) (R.holds i)).trans ?_
-    exact BIFUpdate.mono (sep_mono_l (forall_elim i))
-  fupd_plainly_later E P i :=
-    (BIFUpdatePlainly.fupd_plainly_later E (iprop(∀ j, P j))).trans
-      (BIFUpdate.mono (later_mono (except0_mono (forall_elim i))))
-  fupd_plainly_sForall_2 E Φ i :=
-    (BIFUpdate.mono (plainly_mono (forall_elim i))).trans
-      (BIFUpdatePlainly.fupd_plainly_sForall_2 E (fun p => ∃ Q, Φ Q ∧ Q.holds i = p))
+    refine (sep_mono_l (wand_force i)).trans ?_
+    refine (BIFUpdatePlainly.fupd_plainly_keep_l E E' _ _).trans ?_
+    refine BIFUpdate.mono ?_
+    refine sep_mono_l ?_
+    exact forall_elim i
+  fupd_plainly_later E P i := by
+    refine (BIFUpdatePlainly.fupd_plainly_later E _).trans ?_
+    refine BIFUpdate.mono ?_
+    refine later_mono ?_
+    refine except0_mono ?_
+    exact forall_elim i
+  fupd_plainly_sForall_2 E Ψ i := by
+    refine (BIFUpdatePlainly.fupd_plainly_sForall_2 E _).trans ?_; dsimp
+    refine BIFUpdate.mono ?_
+    refine sForall_elim ?_
+    exact ⟨i, rfl⟩
 
 end MonPred
