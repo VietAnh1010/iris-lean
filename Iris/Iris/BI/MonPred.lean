@@ -713,89 +713,77 @@ instance fupd_objective [BIFUpdate PROP] {E1 E2 : CoPset} [Objective P] :
 
 end modalities
 
-/-! ### Lifting `Persistent`/`Absorbing`/`Affine` through the (pointwise) index
+/-! ### Lifting `Persistent`/`Absorbing`/`Affine` -/
 
-`<pers>`, `<absorb>`, `emp` are all pointwise on `MonPred`, so each of these classes holds for `P`
-iff it holds at every index. Mirrors Rocq's `monPred_persistent`/`absorbing`/`affine` and the
-`monPred_at_*` reverse projections. -/
-
-theorem monPred_persistent {P : MonPred I PROP} (h : ∀ i, Persistent (P i)) : Persistent P :=
+@[rocq_alias monPred_persistent]
+theorem lift_persistent {P : MonPred I PROP} (h : ∀ i, Persistent (P i)) : Persistent P :=
   ⟨fun i => (h i).persistent⟩
-theorem monPred_absorbing {P : MonPred I PROP} (h : ∀ i, Absorbing (P i)) : Absorbing P :=
+
+@[rocq_alias monPred_absorbing]
+theorem lift_absorbing {P : MonPred I PROP} (h : ∀ i, Absorbing (P i)) : Absorbing P :=
   ⟨fun i => (h i).absorbing⟩
-theorem monPred_affine {P : MonPred I PROP} (h : ∀ i, Affine (P i)) : Affine P :=
+
+@[rocq_alias monPred_affine]
+theorem lift_affine {P : MonPred I PROP} (h : ∀ i, Affine (P i)) : Affine P :=
   ⟨fun i => (h i).affine⟩
 
-instance monPred_at_persistent {P : MonPred I PROP} [Persistent P] (i : I) : Persistent (P i) :=
-  ⟨(Persistent.persistent (P := P)) i⟩
-instance monPred_at_absorbing {P : MonPred I PROP} [Absorbing P] (i : I) : Absorbing (P i) :=
-  ⟨(Absorbing.absorbing (P := P)) i⟩
-instance monPred_at_affine {P : MonPred I PROP} [Affine P] (i : I) : Affine (P i) :=
-  ⟨(Affine.affine (P := P)) i⟩
+@[rocq_alias monPred_at_persistent]
+instance at_persistent {P : MonPred I PROP} [Persistent P] (i : I) : Persistent (P i) :=
+  ⟨Persistent.persistent (P := P) i⟩
 
-/-! ### `Persistent`/`Absorbing`/`Affine` for `<obj>`/`<subj>`
+@[rocq_alias monPred_at_absorbing]
+instance at_absorbing {P : MonPred I PROP} [Absorbing P] (i : I) : Absorbing (P i) :=
+  ⟨Absorbing.absorbing (P := P) i⟩
 
-At index `i`, `<obj> P` is `∀ j, P j` and `<subj> P` is `∃ j, P j` (constant in `i`), so these reduce
-to the corresponding PROP-level quantifier facts. `<obj>` persistence needs `BiPersistentlyForall`
-(to push `<pers>` through `∀`), exactly as in Rocq. -/
+@[rocq_alias monPred_at_affine]
+instance at_affine {P : MonPred I PROP} [Affine P] (i : I) : Affine (P i) :=
+  ⟨Affine.affine (P := P) i⟩
 
+/-! ### `Persistent`/`Absorbing`/`Affine` for `<obj>`/`<subj>` -/
+
+@[rocq_alias monPred_objectively_persistent]
 instance objectively_persistent {P : MonPred I PROP} [BIPersistentlyForall PROP] [Persistent P] :
     Persistent iprop(<obj> P) :=
-  ⟨fun _ => (forall_mono fun j => Persistent.persistent (P := P j)).trans persistently_forall.mpr⟩
-instance objectively_absorbing {P : MonPred I PROP} [Absorbing P] : Absorbing iprop(<obj> P) :=
-  ⟨fun _ => absorbingly_forall_1.trans (forall_mono fun j => Absorbing.absorbing (P := P j))⟩
-instance objectively_affine {P : MonPred I PROP} [Affine P] : Affine iprop(<obj> P) :=
-  ⟨fun i => (forall_elim i).trans (Affine.affine (P := P i))⟩
+  ⟨fun _ => (forall_mono fun _ => Persistent.persistent).trans persistently_forall.mpr⟩
 
+@[rocq_alias monPred_objectively_absorbing]
+instance objectively_absorbing {P : MonPred I PROP} [Absorbing P] : Absorbing iprop(<obj> P) :=
+  ⟨fun _ => absorbingly_forall_1.trans (forall_mono fun _ => Absorbing.absorbing)⟩
+
+@[rocq_alias monPred_objectively_affine]
+instance objectively_affine {P : MonPred I PROP} [Affine P] : Affine iprop(<obj> P) :=
+  ⟨fun i => (forall_elim i).trans Affine.affine⟩
+
+@[rocq_alias monPred_subjectively_persistent]
 instance subjectively_persistent {P : MonPred I PROP} [Persistent P] : Persistent iprop(<subj> P) :=
-  ⟨fun _ => (exists_mono fun j => Persistent.persistent (P := P j)).trans persistently_exists.mpr⟩
+  ⟨fun _ => (exists_mono fun _ => Persistent.persistent).trans persistently_exists.mpr⟩
+
+@[rocq_alias monPred_subjectively_absorbing]
 instance subjectively_absorbing {P : MonPred I PROP} [Absorbing P] : Absorbing iprop(<subj> P) :=
-  ⟨fun _ => absorbingly_exists.1.trans (exists_mono fun j => Absorbing.absorbing (P := P j))⟩
+  ⟨fun _ => absorbingly_exists.mp.trans (exists_mono fun _ => Absorbing.absorbing)⟩
+
+@[rocq_alias monPred_subjectively_affine]
 instance subjectively_affine {P : MonPred I PROP} [Affine P] : Affine iprop(<subj> P) :=
-  ⟨fun _ => exists_elim fun j => Affine.affine (P := P j)⟩
+  ⟨fun _ => exists_elim fun _ => Affine.affine⟩
 
 end MonPred
-
-namespace MonPred
 
 -- The `Sbi`-dependent instances live here, in a scope with *only* `[Sbi PROP]` (and no independent
 -- `[BI PROP]`). This is essential: under the namespace-level `variable [BI PROP]` above, `MonPred I
 -- PROP` would carry a second `BI PROP` distinct from `Sbi.toBI`, so lemmas like `forall_mono` would
--- synthesize the section `BI` while the PROP-level `Sbi` laws live over `Sbi.toBI` — an instance
--- diamond. With only `[Sbi PROP]` in scope, `MonPred I PROP`'s `BI` resolves to `Sbi.toBI` and the
--- pointwise/objective field proofs line up. Each field mirrors Rocq's `monPred_sbi_mixin`:
---   `(siPure Pi) i = <si_pure> Pi`   (constant in `i`)
---   `siEmpValid P  = <si_emp_valid> (∀ i, P i)`   (validity of the *objective* `∀ i, P i`).
+-- synthesize the section `BI` while the PROP-level `Sbi` laws live over `Sbi.toBI` - an instance
+-- diamond.
+namespace MonPred
+
 variable {I : BIIndex} {PROP : Type _} [Sbi PROP]
 
--- Internal equality of `MonPred`s is pointwise: `MonPred`'s `Dist` is `∀ i, P i ≡{n}≡ Q i`, which is
--- exactly the function `Dist` on `holds`. So `fun_ext_internalEq` (on `holds`) plus the
--- definitional `Dist` match (`internalEq_entails`) give the `∀ i`-introduction direction we need for
--- `prop_ext_siEmpValid`. Mirrors the `sig_equivI`/`discrete_fun_equivI` step in Rocq's
--- `monPred_sbi_prop_ext_mixin`.
-theorem internalEq_2 {P Q : MonPred I PROP} :
-    iprop(∀ i, SiProp.internalEq (P i) (Q i)) ⊢ SiProp.internalEq P Q :=
-  (SiProp.fun_ext_internalEq P.holds Q.holds).trans
-    ((SiProp.internalEq_entails P.holds Q.holds P Q).mpr fun _ h => h)
-
--- SBI instance
-
--- The SBI structure for `MonPred` mirrors Rocq's `monPred_sbi_mixin`. The two operations are
--- pointwise/objective:
---   `(siPure Pi) i = <si_pure> Pi`   (constant in `i`)
---   `siEmpValid P  = <si_emp_valid> (∀ i, P i)`   (validity of the *objective* `∀ i, P i`)
--- Most fields therefore discharge at each index `i` by the corresponding PROP-level law, after
--- unfolding the (definitionally pointwise) connectives. `siEmpValid_forall` / `later_forall`
--- turn the `∀ i` underneath `<si_emp_valid>` into a MonPred-level `∀`.
--- SBI instance: see the dedicated `namespace MonPred` block after `end MonPred` below. It must
--- live outside the namespace-level `variable [BI PROP]` so that `MonPred I PROP`'s `BI` resolves
--- to `Sbi.toBI` rather than an independent section `BI PROP` (an instance diamond otherwise).
+-- Sbi instance
 @[rocq_alias monPred_sbi]
 instance : Sbi (MonPred I PROP) where
   siPure_ne := ⟨fun {_ _ _} h _ => siPure_ne.ne h⟩
-  siEmpValid_ne := ⟨fun {_ _ _} h => siEmpValid_ne.ne (forall_ne fun i => h i)⟩
+  siEmpValid_ne := ⟨fun {_ _ _} h => siEmpValid_ne.ne (forall_ne h)⟩
   siPure_mono h i := siPure_mono h
-  siEmpValid_mono h := siEmpValid_mono (forall_mono fun i => h i)
+  siEmpValid_mono h := siEmpValid_mono (forall_mono h)
   siEmpValid_siPure {Pi} := by
     constructor
     · exact (siEmpValid_mono (forall_elim default)).trans siEmpValid_siPure.mp
@@ -806,14 +794,14 @@ instance : Sbi (MonPred I PROP) where
     exact (pure_imp_elim refl).trans siPure_imp_mpr
   siPure_sForall_mpr {Ψ} i := by
     refine .trans ?_ siPure_sForall_mpr
-    refine forall_intro fun pi => ?_
+    refine forall_intro fun Pi => ?_
     refine imp_intro ?_
-    refine pure_elim_r fun hpi => ?_
-    have entails : (∀ pi, ⌜Ψ pi⌝ → <si_pure> pi) ⊢@{MonPred I PROP} <si_pure> pi :=
-      (forall_elim pi).trans (pure_imp_elim hpi)
+    refine pure_elim_r fun hPi => ?_
+    have entails : (∀ Pi, ⌜Ψ Pi⌝ → <si_pure> Pi) ⊢@{MonPred I PROP} <si_pure> Pi :=
+      (forall_elim Pi).trans (pure_imp_elim hPi)
     exact entails i
-  persistently_imp_siPure {pi P} i := by
-    refine (forall_elim i).trans ?_
+  persistently_imp_siPure {Pi P} i := by
+    refine (forall_elim i).trans ?_; dsimp
     refine (pure_imp_elim refl).trans ?_
     refine persistently_imp_siPure.trans ?_
     refine persistently_mono ?_
@@ -822,40 +810,45 @@ instance : Sbi (MonPred I PROP) where
     refine pure_elim_r fun h_rel => ?_
     exact imp_mono_r (P.mono h_rel)
   siPure_later := ⟨fun _ => siPure_later.mp, fun _ => siPure_later.mpr⟩
-  siPure_absorbing {pi} := ⟨fun _ => (siPure_absorbing pi).absorbing⟩
+  siPure_absorbing {Pi} := ⟨fun _ => (siPure_absorbing Pi).absorbing⟩
   siEmpValid_later_mp := (siEmpValid_mono later_forall.mpr).trans siEmpValid_later_mp
   siEmpValid_affinely_mpr := by
     refine siEmpValid_affinely_mpr.trans ?_
     refine siEmpValid_mono ?_
     refine forall_intro fun i => ?_
-    exact and_mono_r (forall_elim i)
+    exact affinely_mono (forall_elim i)
   prop_ext_siEmpValid {P Q} := by
-    refine (forall_intro fun i => ?_).trans internalEq_2
-    refine (siEmpValid_mono ?_).trans prop_ext_siEmpValid
+    refine .trans ?_ (SiProp.fun_ext_internalEq P Q)
+    refine forall_intro fun i => ?_
+    refine .trans ?_ prop_ext_siEmpValid
+    refine siEmpValid_mono ?_
     refine (forall_elim i).trans (and_mono ?_ ?_)
     · exact (forall_elim i).trans (pure_imp_elim refl)
     · exact (forall_elim i).trans (pure_imp_elim refl)
 
--- `<si_pure> Pi` and `■ P` are *objective for any argument*: `(<si_pure> Pi).holds i = <si_pure> Pi`
--- and `(■ P).holds i = <si_pure> (<si_emp_valid> (∀ j, P j))` are both constant in `i` (no `[Objective
--- P]` hypothesis needed). Mirrors Rocq's `si_pure_objective`, `plainly_objective`.
-instance si_pure_objective (Pi : SiProp) : Objective (iprop(<si_pure> Pi) : MonPred I PROP) :=
+@[rocq_alias si_pure_objective]
+instance si_pure_objective {Pi : SiProp} : Objective (iprop(<si_pure> Pi) : MonPred I PROP) :=
   ⟨fun _ _ => .rfl⟩
-instance plainly_objective (P : MonPred I PROP) : Objective iprop(■ P) := ⟨fun _ _ => .rfl⟩
 
--- Mirrors Rocq's `monPred_sbi_emp_valid_exist`, which needs a bottom index `bot`: instantiate the
--- objective `∀ i` at `bot`, apply PROP's `siEmpValid_sExists_1`, then transport the witness `q = P
--- bot` back to `<si_emp_valid> P` using `P bot ⊢ ∀ i, P i` (from `bot ≤ i`).
+@[rocq_alias plainly_objective]
+instance plainly_objective {P : MonPred I PROP} : Objective iprop(■ P) := ⟨fun _ _ => .rfl⟩
+
+@[rocq_alias monPred_sbi_emp_valid_exist]
 instance [SbiEmpValidExist PROP] [BIIndexBottom I] : SbiEmpValidExist (MonPred I PROP) where
   siEmpValid_sExists_1 Ψ := by
-    refine ((siEmpValid_mono (forall_elim BIIndexBottom.bot)).trans
-      ((SbiEmpValidExist.siEmpValid_sExists_1 _))).trans ?_
-    exact exists_elim fun p => pure_elim_l fun ⟨P, hP, hbot⟩ =>
-      exists_intro' P (and_intro (pure_intro hP)
-        (hbot ▸ siEmpValid_mono (forall_intro fun i => P.mono (BIIndexBottom.bot_le i))))
+    refine (siEmpValid_mono (forall_elim BIIndexBottom.bot)).trans ?_
+    refine (SbiEmpValidExist.siEmpValid_sExists_1 _).trans ?_
+    refine exists_elim fun p => ?_
+    refine pure_elim_l ?_
+    rintro ⟨P, hP, rfl⟩
+    refine exists_intro' P ?_
+    refine and_intro (pure_intro hP) ?_
+    refine siEmpValid_mono ?_
+    exact forall_intro fun i => P.mono (BIIndexBottom.bot_le i)
 
+@[rocq_alias monPred_bi_bupd_sbi]
 instance [BIUpdate PROP] [BIBUpdateSbi PROP] : BIBUpdateSbi (MonPred I PROP) where
-  bupd_si_pure Pi := fun _ => BIBUpdateSbi.bupd_si_pure Pi
+  bupd_si_pure Pi _ := BIBUpdateSbi.bupd_si_pure Pi
 
 -- `BIFUpdatePlainly` for `MonPred`. This mirrors Rocq's `monPred_bi_fupd_sbi`. The key fact is that
 -- `MonPred`'s plainly is *objective*: `(■ P).holds i = <si_pure> <si_emp_valid> (∀ j, P j) = ■ (∀ j,
