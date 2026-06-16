@@ -114,9 +114,11 @@ class BIFUpdate (PROP : Type _) [BI PROP] extends FUpd PROP where
 class BIUpdateFUpdate (PROP : Type _) [BI PROP] [BIUpdate PROP] [BIFUpdate PROP] where
   fupd_of_bupd {P : PROP} {E : CoPset} : (|==> P) ⊢ |={E}=> P
 
+-- In Rocq: this class is subsumed by `BIBUpdateSbi`, should be eventually removed
 class BIBUpdatePlainly (PROP : Type _) [BI PROP] [BIUpdate PROP] [Sbi PROP] where
   bupd_plainly {P : PROP} : (|==> ■ P) ⊢ P
 
+-- In Rocq: this class is subsumed by `BIFUpdateSbi`, should be eventually removed
 class BIFUpdatePlainly (PROP : Type _) [BI PROP] [BIFUpdate PROP] [Sbi PROP] where
   fupd_plainly_keep_l (E E' : CoPset) (P R : PROP) : (R ={E,E'}=∗ ■ P) ∗ R ⊢ |={E}=> P ∗ R
   fupd_plainly_later (E : CoPset) (P : PROP) : (▷ |={E}=> ■ P) ⊢ |={E}=> ▷ ◇ P
@@ -125,6 +127,14 @@ class BIFUpdatePlainly (PROP : Type _) [BI PROP] [BIFUpdate PROP] [Sbi PROP] whe
 
 class BIBUpdateSbi (PROP : Type _) [BI PROP] [BIUpdate PROP] [Sbi PROP] where
   bupd_si_pure (Pi : SiProp) : iprop(|==> <si_pure> Pi ⊢@{PROP} <si_pure> Pi)
+
+class BIFUpdateSbi (PROP : Type _) [BI PROP] [BIFUpdate PROP] [Sbi PROP] where
+  fupd_si_pure_keep_l {E E' : CoPset} {Pi : SiProp} {R : PROP} :
+    (R ={E,E'}=∗ <si_pure> Pi) ∗ R ⊢ |={E}=> <si_pure> Pi ∗ R
+  fupd_si_pure_later {E : CoPset} {Pi : SiProp} :
+    (▷ |={E}=> <si_pure> Pi) ⊢@{PROP} |={E}=> ▷ ◇ <si_pure> Pi
+  fupd_si_pure_sForall_2 {E : CoPset} {Ψi : SiProp → Prop} :
+    (∀ Pi, ⌜Ψi Pi⌝  → |={E}=> <si_pure> Pi) ⊢@{PROP} |={E}=> ∀ Pi, ⌜Ψi Pi⌝ → <si_pure> Pi
 
 section BUpdLaws
 

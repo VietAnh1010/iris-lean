@@ -27,7 +27,6 @@ instance : CoeSort BIIndex (Type _) := ⟨BIIndex.type⟩
 instance {I : BIIndex} : Inhabited I := I.inhabited
 instance {I : BIIndex} : Preorder I.rel := I.rel_preorder
 
-
 -- Change: `bot` is a field of this class, in Rocq it is a parameter of this class
 @[rocq_alias BiIndexBottom]
 class BIIndexBottom (I : BIIndex) where
@@ -64,13 +63,8 @@ def MonPred.proj (i : I) : MonPred I PROP -n> PROP where
 instance : COFE (MonPred I PROP) where
   compl c := {
     holds i := compl (c.map (MonPred.proj i))
-    -- Monotonicity at the limit. We cannot use `LimitPreserving` over `MonPred I PROP` (its COFE
-    -- is exactly what we are defining), so we work in the function space `I → PROP`, which is
-    -- already a COFE. There, `LimitPreserving.entails` says `· i₁ ⊢ · i₂` survives limits; each
-    -- `c n` satisfies it by `(c n).mono`, and the two function-space limits are definitionally the
-    -- projected PROP limits above.
     mono {i₁ i₂} h :=
-      let c' : Chain (I → PROP) := ⟨fun n => (c n).holds, fun hle j => c.cauchy hle j⟩
+      let c' : Chain (I → PROP) := ⟨fun n => (c n).holds, c.cauchy⟩
       LimitPreserving.entails (applyHom i₁) (applyHom i₂) c' fun n => (c n).mono h
   }
   conv_compl _ := conv_compl
@@ -423,11 +417,9 @@ theorem exists_at {α} {Ψ : α → MonPred I PROP} i : iprop(∃ x, Ψ x) i ⊣
     refine exists_intro' (Ψ x) ?_; dsimp
     exact and_intro (pure_intro ⟨x, rfl⟩) .rfl
 
--- Embed instances (DEFERRED — not ported). `MonPred.embed` exists as a plain `def` (above), but the
--- generic `Embed`/`BiEmbed` typeclass hierarchy that Rocq's `embedding.v` provides does not exist in
--- iris-lean, so none of the embed instances below are ported:
---   BiEmbed · BiEmbedEmp · BiEmbedLater · BiEmbedBUpd · BiEmbedFUpd · BiEmbedSbi · embed_objective
--- See `MonPred-porting-notes.md` § "Decision (session 3): do NOT port the generic BiEmbed infra".
+-- Embed instances: `MonPred.embed` exists as a plain `def` (above), but the generic
+-- `Embed`/`BiEmbed` typeclass hierarchy that Rocq's `embedding.v` provides does not
+-- exist in iris-lean, so none of the embed instances are ported.
 
 -- BIBUpd instance
 @[rocq_alias monPred_bi_bupd]
@@ -492,13 +484,8 @@ instance [BILaterContractive PROP] : BILaterContractive (MonPred I PROP) where
 instance [BIUpdate PROP] [BIFUpdate PROP] [BIUpdateFUpdate PROP] : BIUpdateFUpdate (MonPred I PROP) where
   fupd_of_bupd _ := BIUpdateFUpdate.fupd_of_bupd
 
--- SbiEmpValidExist instance: see the `[Sbi PROP]` block after `end MonPred` below.
-
--- BiBUpdSbi instance: see the `[Sbi PROP]` block after `end MonPred` below.
-
--- BiFUpdSbi instance: see the `[Sbi PROP]` block after `end MonPred` below.
-
 section modalities
+
 variable {P Q : MonPred I PROP}
 
 /-! ### The `<obj>` modality -/
@@ -839,6 +826,7 @@ instance si_pure_objective {Pi : SiProp} : Objective (iprop(<si_pure> Pi) : MonP
 @[rocq_alias plainly_objective]
 instance plainly_objective {P : MonPred I PROP} : Objective iprop(■ P) := ⟨fun _ _ => .rfl⟩
 
+-- SbiEmpValidExist instance
 @[rocq_alias monPred_sbi_emp_valid_exist]
 instance [SbiEmpValidExist PROP] [BIIndexBottom I] : SbiEmpValidExist (MonPred I PROP) where
   siEmpValid_sExists_1 Ψ := by
@@ -852,10 +840,31 @@ instance [SbiEmpValidExist PROP] [BIIndexBottom I] : SbiEmpValidExist (MonPred I
     refine siEmpValid_mono ?_
     exact forall_intro fun i => P.mono (BIIndexBottom.bot_le i)
 
+-- BiBUpdSbi instance
 @[rocq_alias monPred_bi_bupd_sbi]
 instance [BIUpdate PROP] [BIBUpdateSbi PROP] : BIBUpdateSbi (MonPred I PROP) where
   bupd_si_pure Pi _ := BIBUpdateSbi.bupd_si_pure Pi
 
+-- BiFUpdSbi instance
+@[rocq_alias monPred_bi_fupd_sbi]
+instance [BIFUpdate PROP] [BIFUpdateSbi PROP] : BIFUpdateSbi (MonPred I PROP) where
+  fupd_si_pure_keep_l {E E' Pi R} i := by
+    refine (sep_mono_l (wand_force i)).trans ?_
+    exact BIFUpdateSbi.fupd_si_pure_keep_l
+  fupd_si_pure_later {E Pi} i := BIFUpdateSbi.fupd_si_pure_later
+  fupd_si_pure_sForall_2 {E Ψi} i := by
+    refine (forall_at i).mp.trans ?_
+    refine (forall_mono fun _ => imp_force i).trans ?_
+    refine BIFUpdateSbi.fupd_si_pure_sForall_2.trans ?_
+    refine BIFUpdate.mono ?_
+    refine .trans ?_ (forall_at i).mpr
+    refine forall_intro fun Pi => ?_; dsimp
+    refine forall_intro fun j => ?_; dsimp
+    refine imp_intro ?_
+    refine pure_elim_r fun h_rel => ?_
+    exact forall_elim Pi
+
+-- In Rocq: this instance is subsumed by `BIFUpdateSbi`, should be eventually removed
 instance [BIFUpdate PROP] [BIFUpdatePlainly PROP] : BIFUpdatePlainly (MonPred I PROP) where
   fupd_plainly_keep_l E E' P R i := by
     refine (sep_mono_l (wand_force i)).trans ?_
